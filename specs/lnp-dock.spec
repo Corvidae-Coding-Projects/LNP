@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 
 Name:           lnp-dock
-Version:        0.5.2
+Version:        0.5.3
 Release:        1%{?dist}
 Summary:        Dock for Linux for Normal People
 
@@ -68,6 +68,12 @@ install -Dpm 0644 81-lnp-dock.preset %{buildroot}%{_userpresetdir}/81-lnp-dock.p
 %{_userpresetdir}/81-lnp-dock.preset
 
 %changelog
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.5.3-1
+- Release the popup grab when a menu loses keyboard focus. Holding it
+  starved anything that needed exclusive input -- a screenshot tool's
+  region selector received no drag while a dock menu was open. Escape now
+  closes menus too.
+
 * Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.5.2-1
 - Cache rasterised glyphs. Every redraw previously re-rasterised every
   glyph in the apps menu -- roughly 300 per frame, once per scroll event.

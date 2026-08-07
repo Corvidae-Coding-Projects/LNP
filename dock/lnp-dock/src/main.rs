@@ -40,6 +40,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         Capability, SeatHandler, SeatState,
+        keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
         pointer::{PointerEvent, PointerEventKind, PointerHandler},
     },
     shell::{
@@ -194,6 +195,7 @@ fn main() -> Result<()> {
         height,
         scale: 1,
         pointer: None,
+        keyboard: None,
         pointer_x: None,
         last_motion: Instant::now(),
         animating: false,
@@ -248,6 +250,7 @@ struct Dock {
     scale: i32,
 
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard>,
     /// Pointer x in surface-local logical pixels, if it is over the dock.
     pointer_x: Option<f32>,
     last_motion: Instant,
@@ -1395,6 +1398,15 @@ impl SeatHandler for Dock {
                 Err(e) => eprintln!("lnp-dock: no pointer: {e}"),
             }
         }
+        // A grabbing popup receives keyboard focus even though the layer
+        // surface itself asks for none, so we need a keyboard object to be
+        // told when that focus goes away.
+        if capability == Capability::Keyboard && self.keyboard.is_none() {
+            match self.seat_state.get_keyboard(qh, &seat, None) {
+                Ok(k) => self.keyboard = Some(k),
+                Err(e) => eprintln!("lnp-dock: no keyboard: {e}"),
+            }
+        }
         if self.seat.is_none() {
             self.seat = Some(seat);
         }
@@ -1410,6 +1422,11 @@ impl SeatHandler for Dock {
         if capability == Capability::Pointer {
             if let Some(p) = self.pointer.take() {
                 p.release();
+            }
+        }
+        if capability == Capability::Keyboard {
+            if let Some(k) = self.keyboard.take() {
+                k.release();
             }
         }
     }
@@ -1787,6 +1804,101 @@ impl PopupHandler for Dock {
             eprintln!("lnp-dock: apps menu dismissed by compositor");
             self.apps_menu = None;
         }
+    }
+}
+
+/// Menus close when they stop being the focused thing.
+///
+/// A popup with a grab takes keyboard focus, and the compositor moves that
+/// focus away when something else needs the input -- which is exactly what
+/// happens when a screenshot tool opens its region-select overlay. Without
+/// this, the dock kept its grab, the overlay never received the drag, and
+/// selecting a region silently did nothing while a dock menu was open.
+///
+/// Holding a grab until the user explicitly dismisses it is antisocial: a
+/// menu is not more important than whatever the user just reached for.
+impl KeyboardHandler for Dock {
+    fn enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        _: &wl_surface::WlSurface,
+        _: u32,
+        _: &[u32],
+        _: &[Keysym],
+    ) {
+    }
+
+    fn leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        surface: &wl_surface::WlSurface,
+        _: u32,
+    ) {
+        let ours = self
+            .menu
+            .as_ref()
+            .is_some_and(|m| m.popup.wl_surface() == surface)
+            || self
+                .apps_menu
+                .as_ref()
+                .is_some_and(|a| a.popup.wl_surface() == surface);
+
+        if ours {
+            eprintln!("lnp-dock: menu lost keyboard focus; releasing the grab");
+            self.menu = None;
+            self.apps_menu = None;
+        }
+    }
+
+    fn press_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        _: u32,
+        event: KeyEvent,
+    ) {
+        // Escape closes the menu, as it does everywhere else.
+        if event.keysym == Keysym::Escape {
+            self.menu = None;
+            self.apps_menu = None;
+        }
+    }
+
+    fn repeat_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        _: u32,
+        _: KeyEvent,
+    ) {
+    }
+
+    fn release_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        _: u32,
+        _: KeyEvent,
+    ) {
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        _: u32,
+        _: Modifiers,
+        _: RawModifiers,
+        _: u32,
+    ) {
     }
 }
 
