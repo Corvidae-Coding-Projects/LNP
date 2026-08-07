@@ -1,0 +1,91 @@
+#!/usr/bin/bash
+#
+# lnp-restore -- put the system back the way it was.
+#
+# Restores the root subvolume from a snapshot taken by lnp-guard. The running
+# system is not disturbed: the current root is renamed aside (still mounted,
+# still running), a writable copy of the chosen snapshot takes its name, and
+# the next boot mounts the restored system. /home is a separate subvolume and
+# is never touched -- personal files stay exactly as they are.
+#
+#   list                  show available snapshots
+#   restore <name>        restore a specific snapshot
+#   restore-last-update   restore the newest pre-update snapshot
+
+set -uo pipefail
+
+readonly TOP=/run/lnp/top
+readonly SNAPDIR=snapshots
+
+log() { echo "lnp-restore: $*"; }
+die() { log "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+
+root_device() {
+    findmnt -n -o SOURCE / | sed 's/\[.*\]//'
+}
+
+mount_top() {
+    mkdir -p "$TOP"
+    mountpoint -q "$TOP" && return 0
+    mount -o subvolid=5 "$(root_device)" "$TOP" || die "cannot reach the disk's top level"
+}
+
+umount_top() {
+    mountpoint -q "$TOP" && umount "$TOP"
+}
+
+cmd_list() {
+    mount_top
+    trap umount_top EXIT
+    if [ ! -d "$TOP/$SNAPDIR" ] || [ -z "$(ls -A "$TOP/$SNAPDIR" 2>/dev/null)" ]; then
+        log "no snapshots yet"
+        return 0
+    fi
+    ls -1 "$TOP/$SNAPDIR" | sort
+}
+
+cmd_restore() {
+    local name="$1"
+    mount_top
+    trap umount_top EXIT
+
+    [ -d "$TOP/$SNAPDIR/$name" ] || die "no snapshot called '$name'"
+    [ -d "$TOP/root" ] || die "cannot find the current system subvolume"
+
+    # The current root is kept, renamed, so this operation is itself undoable.
+    local stamp
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    mv "$TOP/root" "$TOP/root.before-restore-$stamp" \
+        || die "could not set the current system aside"
+
+    if ! btrfs subvolume snapshot "$TOP/$SNAPDIR/$name" "$TOP/root" >/dev/null; then
+        # Put things back rather than leave no 'root' at all.
+        mv "$TOP/root.before-restore-$stamp" "$TOP/root"
+        die "restore failed; nothing was changed"
+    fi
+
+    log "restored snapshot '$name'."
+    log "the replaced system is kept as 'root.before-restore-$stamp'."
+    log "restart the computer to finish."
+}
+
+cmd_restore_last_update() {
+    mount_top
+    local latest="" d
+    for d in "$TOP/$SNAPDIR"/*-pre-update; do
+        [ -d "$d" ] && latest="${d##*/}"
+    done
+    umount_top
+    [ -n "$latest" ] || die "no pre-update snapshot found"
+    cmd_restore "$latest"
+}
+
+case "${1:-}" in
+    list)                cmd_list ;;
+    restore)             [ -n "${2:-}" ] || die "usage: lnp-restore restore <name>"
+                         cmd_restore "$2" ;;
+    restore-last-update) cmd_restore_last_update ;;
+    *)                   die "usage: lnp-restore list | restore <name> | restore-last-update" ;;
+esac

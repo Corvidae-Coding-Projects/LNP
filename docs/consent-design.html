@@ -1,0 +1,1115 @@
+<title>Consent Without Passwords — LNP Design Document</title>
+
+<style>
+  :root {
+    color-scheme: light dark;
+
+    /* Neutrals carry a slight blue bias — the cool of system chrome — so they
+       read as chosen rather than inherited. */
+    --ground:      #F5F7FA;
+    --ground-sunk: #ECEFF4;
+    --card:        #FFFFFF;
+    --ink:         #161A21;
+    --ink-soft:    #3D4653;
+    --muted:       #5F6A7A;
+    --rule:        #D8DEE7;
+
+    /* Copper: the human decision. Warm against the cool machine ground. */
+    --accent:      #A9601F;
+    --accent-soft: #F3E7DA;
+    /* Teal: the compositor-guaranteed path. */
+    --trusted:     #1F6E5E;
+    --trusted-soft:#DCEDE9;
+    /* Brick: the thing that stays behind a password. */
+    --danger:      #9E3F35;
+    --danger-soft: #F6E2DF;
+
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Source Serif 4", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Cantarell, "Noto Sans", sans-serif;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:      #0E1116;
+      --ground-sunk: #070910;
+      --card:        #161B23;
+      --ink:         #E3E8EF;
+      --ink-soft:    #B6C0CD;
+      --muted:       #8593A5;
+      --rule:        #262D38;
+
+      --accent:      #D9954E;
+      --accent-soft: #241A10;
+      --trusted:     #55B49F;
+      --trusted-soft:#12251F;
+      --danger:      #D97A6D;
+      --danger-soft: #2A1614;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0E1116;
+    --ground-sunk: #070910;
+    --card:        #161B23;
+    --ink:         #E3E8EF;
+    --ink-soft:    #B6C0CD;
+    --muted:       #8593A5;
+    --rule:        #262D38;
+    --accent:      #D9954E;
+    --accent-soft: #241A10;
+    --trusted:     #55B49F;
+    --trusted-soft:#12251F;
+    --danger:      #D97A6D;
+    --danger-soft: #2A1614;
+  }
+
+  :root[data-theme="light"] {
+    --ground:      #F5F7FA;
+    --ground-sunk: #ECEFF4;
+    --card:        #FFFFFF;
+    --ink:         #161A21;
+    --ink-soft:    #3D4653;
+    --muted:       #5F6A7A;
+    --rule:        #D8DEE7;
+    --accent:      #A9601F;
+    --accent-soft: #F3E7DA;
+    --trusted:     #1F6E5E;
+    --trusted-soft:#DCEDE9;
+    --danger:      #9E3F35;
+    --danger-soft: #F6E2DF;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 clamp(20px, 4vw, 56px) 96px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 56px;
+  }
+
+  @media (min-width: 1040px) {
+    .wrap { grid-template-columns: 1fr 200px; }
+    .toc-col { grid-column: 2; grid-row: 2; }
+    .doc { grid-column: 1; grid-row: 2; }
+    header.masthead { grid-column: 1 / -1; grid-row: 1; }
+  }
+
+  /* ---------------------------------------------------------- masthead */
+
+  header.masthead {
+    padding: clamp(48px, 8vw, 96px) 0 40px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 48px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 20px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(34px, 5.6vw, 56px);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0 0 20px;
+    max-width: 20ch;
+  }
+
+  .thesis {
+    font-family: var(--serif);
+    font-size: clamp(18px, 2.2vw, 21px);
+    line-height: 1.5;
+    color: var(--ink-soft);
+    max-width: 60ch;
+    margin: 0 0 32px;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .facts b {
+    display: block;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    color: var(--muted);
+    opacity: 0.75;
+    margin-bottom: 3px;
+  }
+  .facts span { color: var(--ink-soft); }
+
+  /* --------------------------------------------------------------- toc */
+
+  .toc-col { position: relative; }
+  nav.toc {
+    position: sticky;
+    top: 32px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    display: none;
+  }
+  @media (min-width: 1040px) { nav.toc { display: block; } }
+  nav.toc p {
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    opacity: 0.7;
+    margin: 0 0 14px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+  nav.toc a {
+    color: var(--muted);
+    text-decoration: none;
+    display: block;
+    border-left: 2px solid var(--rule);
+    padding-left: 12px;
+  }
+  nav.toc a:hover, nav.toc a:focus-visible {
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+
+  /* -------------------------------------------------------------- doc */
+
+  .doc { min-width: 0; }
+
+  section { margin: 0 0 68px; }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(24px, 3.2vw, 31px);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 8px;
+    max-width: 26ch;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-weight: 650;
+    font-size: 16.5px;
+    letter-spacing: 0.005em;
+    margin: 36px 0 10px;
+    max-width: var(--measure);
+  }
+
+  .sec-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+    display: block;
+  }
+
+  p, ul, ol { max-width: var(--measure); }
+  p { margin: 0 0 17px; }
+
+  ul, ol { margin: 0 0 17px; padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  li::marker { color: var(--muted); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--ground-sunk);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.1em 0.34em;
+    color: var(--ink-soft);
+    word-break: break-word;
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    background: var(--ground-sunk);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 0 0 20px;
+    max-width: var(--measure);
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+  strong { font-weight: 650; color: var(--ink); }
+
+  /* callouts — used sparingly, each carries a distinct meaning */
+  .note {
+    border-left: 3px solid var(--rule);
+    padding: 2px 0 2px 18px;
+    margin: 0 0 20px;
+    max-width: var(--measure);
+    color: var(--ink-soft);
+  }
+  .note.verified { border-left-color: var(--trusted); }
+  .note.warn { border-left-color: var(--danger); }
+  .note p:last-child { margin-bottom: 0; }
+  .note .tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 5px;
+    color: var(--muted);
+  }
+  .note.verified .tag { color: var(--trusted); }
+  .note.warn .tag { color: var(--danger); }
+
+  /* figures break the measure */
+  figure {
+    margin: 32px 0;
+    max-width: 100%;
+  }
+  figure svg {
+    display: block;
+    width: 100%;
+    max-width: 860px;
+    height: auto;
+  }
+  figcaption {
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--muted);
+    margin-top: 12px;
+    max-width: 62ch;
+  }
+
+  .scroll-x { overflow-x: auto; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 860px;
+    font-size: 14.5px;
+    margin: 0 0 20px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px 10px 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  td code { white-space: nowrap; }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 100px;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .pill.safe { background: var(--trusted-soft); color: var(--trusted); }
+  .pill.mod  { background: var(--accent-soft); color: var(--accent); }
+  .pill.high { background: var(--danger-soft); color: var(--danger); }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:focus-visible, .toc a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  hr.end {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 0 0 28px;
+    max-width: var(--measure);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">LNP Design Document · Draft for discussion</p>
+    <h1>Consent without passwords</h1>
+    <p class="thesis">
+      Windows earns a passwordless click by putting the prompt somewhere your
+      programs cannot reach. Linux has no such place — but it has something
+      Windows does not: a compositor that already arbitrates every pixel and
+      every keystroke. This is a design for spending that.
+    </p>
+    <div class="facts">
+      <div><b>Scope</b><span>polkit 127 · KWin 6.7.4 · Fedora 44</span></div>
+      <div><b>Parts</b><span>B — polkit auth_consent · C — compositor anchor</span></div>
+      <div><b>Status</b><span>Proposed, unbuilt</span></div>
+    </div>
+  </header>
+
+  <div class="toc-col">
+    <nav class="toc" aria-label="Contents">
+      <p>Contents</p>
+      <ol>
+        <li><a href="#problem">The problem</a></li>
+        <li><a href="#shortcut">Why the shortcut fails</a></li>
+        <li><a href="#threat">Threat model</a></li>
+        <li><a href="#partb">Part B — polkit</a></li>
+        <li><a href="#partc">Part C — compositor</a></li>
+        <li><a href="#together">Composed flow</a></li>
+        <li><a href="#mapping">Action mapping</a></li>
+        <li><a href="#cost">Cost &amp; risk</a></li>
+        <li><a href="#nongoals">Non-goals</a></li>
+        <li><a href="#phasing">Phasing</a></li>
+      </ol>
+    </nav>
+  </div>
+
+  <main class="doc">
+
+    <!-- ============================================================ -->
+    <section id="problem">
+      <span class="sec-label">01 — Problem</span>
+      <h2>What a click has to be worth</h2>
+
+      <p>
+        Every privileged action in LNP currently costs an administrator
+        password. That is friction in the wrong place: on a single-user
+        laptop the person already proved <em>who</em> they are at login. What
+        the system actually needs at the moment of elevation is proof of
+        <em>intent</em> — that a human, not a background process, decided this
+        should happen.
+      </p>
+
+      <p>
+        Windows solved this with the UAC consent prompt, and the reason a bare
+        click is trustworthy there has nothing to do with the dialog's
+        appearance. <code>consent.exe</code> runs as SYSTEM on a separate
+        desktop object. Processes on the interactive desktop cannot post input
+        to it, cannot screenshot it, and cannot draw a convincing forgery over
+        it. Malware can <em>provoke</em> a prompt; it cannot <em>answer</em>
+        one.
+      </p>
+
+      <p>
+        That specific trick does not port. On Linux the compositor runs as the
+        user — the same user malware would run as. There is no SYSTEM-owned
+        desktop to escape to. Copying the dialog without copying the anchor
+        produces something that looks like UAC and protects nothing.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 860 300" role="img" aria-label="Windows routes the consent prompt to a separate SYSTEM-owned desktop that user processes cannot reach; on Linux every surface is drawn by a compositor running as the same user, so no such separation exists by default.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+            </marker>
+            <marker id="ar-block" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="#9E3F35"/>
+            </marker>
+          </defs>
+
+          <!-- WINDOWS -->
+          <text x="0" y="16" font-family="monospace" font-size="11" letter-spacing="1.6" fill="currentColor" opacity="0.6">WINDOWS</text>
+
+          <rect x="0" y="34" width="176" height="90" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+          <text x="88" y="62" font-size="12" text-anchor="middle" fill="currentColor" opacity="0.85">interactive desktop</text>
+          <text x="88" y="82" font-size="12" text-anchor="middle" fill="currentColor">your apps</text>
+          <text x="88" y="102" font-size="12" text-anchor="middle" fill="currentColor">malware</text>
+
+          <rect x="232" y="34" width="176" height="90" rx="5" fill="none" stroke="#1F6E5E" stroke-width="1.6"/>
+          <text x="320" y="62" font-size="12" text-anchor="middle" fill="#1F6E5E">winlogon desktop</text>
+          <text x="320" y="82" font-size="12" text-anchor="middle" font-family="monospace" fill="#1F6E5E">consent.exe</text>
+          <text x="320" y="102" font-size="12" text-anchor="middle" fill="#1F6E5E">runs as SYSTEM</text>
+
+          <line x1="180" y1="72" x2="226" y2="72" stroke="#9E3F35" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#ar-block)"/>
+          <text x="203" y="63" font-size="10.5" text-anchor="middle" fill="#9E3F35">input</text>
+          <text x="203" y="93" font-size="10.5" text-anchor="middle" fill="#9E3F35">refused</text>
+
+          <text x="424" y="78" font-size="12" fill="currentColor" opacity="0.75">click is</text>
+          <text x="424" y="95" font-size="12" fill="#1F6E5E">unforgeable</text>
+
+          <!-- divider -->
+          <line x1="0" y1="158" x2="860" y2="158" stroke="currentColor" stroke-opacity="0.15"/>
+
+          <!-- LINUX -->
+          <text x="0" y="186" font-family="monospace" font-size="11" letter-spacing="1.6" fill="currentColor" opacity="0.6">LINUX TODAY</text>
+
+          <rect x="0" y="204" width="408" height="82" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+          <text x="204" y="228" font-size="12" text-anchor="middle" fill="currentColor" opacity="0.85">one session · one compositor · uid 1000</text>
+
+          <rect x="20" y="240" width="112" height="32" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.5"/>
+          <text x="76" y="260" font-size="11.5" text-anchor="middle" fill="currentColor">your apps</text>
+
+          <rect x="148" y="240" width="112" height="32" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.5"/>
+          <text x="204" y="260" font-size="11.5" text-anchor="middle" fill="currentColor">malware</text>
+
+          <rect x="276" y="240" width="112" height="32" rx="4" fill="none" stroke="#A9601F" stroke-width="1.6"/>
+          <text x="332" y="260" font-size="11.5" text-anchor="middle" fill="#A9601F">polkit dialog</text>
+
+          <line x1="264" y1="256" x2="272" y2="256" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4" marker-end="url(#ar)"/>
+
+          <text x="424" y="250" font-size="12" fill="currentColor" opacity="0.75">same session:</text>
+          <text x="424" y="267" font-size="12" fill="#9E3F35">no separation by default</text>
+        </svg>
+        <figcaption>
+          The security of UAC's click comes from a desktop boundary, not from
+          the dialog. Linux has no equivalent boundary out of the box — which
+          is the gap Part C fills, using the compositor rather than a second
+          desktop.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="shortcut">
+      <span class="sec-label">02 — Rejected approach</span>
+      <h2>Why a custom agent is not the answer</h2>
+
+      <p>
+        polkit lets anyone register an authentication agent. We could ship one
+        that shows a Yes/No dialog for our actions and delegates everything
+        else to the password flow, and it would work today with no patches at
+        all. It is the obvious shortcut and we should not take it.
+      </p>
+
+      <p>
+        The agent's job is to authenticate a user and report the result to
+        <code>polkitd</code> via <code>AuthenticationAgentResponse2</code>.
+        polkitd cannot verify that a PAM conversation actually happened; it
+        trusts the registered agent. An agent that returns success without
+        authenticating is <strong>asserting something untrue to the security
+        daemon</strong>. It works precisely because of a trust gap, and it
+        leaves the policy file lying too — the action would still read
+        <code>auth_admin</code> while no admin was ever authenticated.
+      </p>
+
+      <p>
+        The result is indistinguishable, to an auditor reading the policy, from
+        a system that asks for a password. That is a worse property than simply
+        setting the action to <code>yes</code>, which at least tells the truth.
+      </p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="threat">
+      <span class="sec-label">03 — Threat model</span>
+      <h2>What this defends against, and what it does not</h2>
+
+      <h3>In scope</h3>
+      <ul>
+        <li>
+          <strong>An unprivileged process invoking a privileged action
+          silently.</strong> It may provoke a prompt; it must not be able to
+          answer one.
+        </li>
+        <li>
+          <strong>A malicious client forging or overdrawing the consent
+          surface.</strong> Covered by Part C.
+        </li>
+        <li>
+          <strong>Input synthesis into the consent surface.</strong> Wayland
+          already forbids client-to-client input injection; the one escape
+          hatch, <code>org_kde_kwin_fake_input</code>, is itself gated by the
+          mechanism Part C builds on.
+        </li>
+        <li>
+          <strong>Password theft by a hostile agent.</strong> Removing the
+          password from the common path removes the thing worth stealing.
+        </li>
+      </ul>
+
+      <h3>Explicitly out of scope</h3>
+      <ul>
+        <li>
+          <strong>A user who is socially engineered into clicking.</strong> No
+          consent mechanism, on any operating system, survives a person who
+          decides to say yes. UAC does not solve this either.
+        </li>
+        <li>
+          <strong>Malware already running as the user, targeting the user's own
+          files.</strong> Those are readable without any elevation. This design
+          protects the <em>system</em>, not the home directory.
+        </li>
+        <li>
+          <strong>A compromised compositor.</strong> KWin already sees every
+          keystroke and frames every pixel. If it is hostile, nothing in the
+          session is salvageable, and anchoring to it costs nothing we still
+          had.
+        </li>
+      </ul>
+
+      <div class="note warn">
+        <span class="tag">Stated plainly</span>
+        <p>
+          Following Microsoft's own precedent, we should say which actions this
+          <em>protects</em> and which it merely <em>documents</em>. UAC shipped
+          as an awareness feature, was widely read as a boundary, and fifteen
+          years of auto-elevation bypasses went unpatched because the two were
+          never separated in public. We separate them in
+          <a href="#mapping">§07</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="partb">
+      <span class="sec-label">04 — Part B</span>
+      <h2>An honest consent mode in polkit</h2>
+
+      <p>
+        The goal is a new implicit-authorization value,
+        <code>auth_consent</code>, that means exactly what it says: prompt a
+        human for a yes-or-no decision, require no credential, and grant on
+        yes. Crucially, <code>polkitd</code> remains the gate throughout —
+        nothing about this lets a caller bypass the check, and no component
+        misrepresents what it did.
+      </p>
+
+      <div class="note verified">
+        <span class="tag">Verified on this machine</span>
+        <p>
+          polkit 127 exposes the enum as
+          <code>POLKIT_IMPLICIT_AUTHORIZATION_*</code> with
+          <code>polkit_implicit_authorization_from_string</code> and
+          <code>…_to_string</code> as the string boundary, and today's policy
+          files use only <code>no</code>, <code>yes</code>,
+          <code>auth_self</code>, <code>auth_admin</code>, and the
+          <code>_keep</code> variants. The extension point is narrow and
+          well-defined.
+        </p>
+      </div>
+
+      <h3>Changes to polkit</h3>
+      <ol>
+        <li>
+          <strong>Enum.</strong> Add
+          <code>POLKIT_IMPLICIT_AUTHORIZATION_CONSENT_REQUIRED</code> (and a
+          <code>…_RETAINED</code> sibling, matching the existing
+          <code>_keep</code> pattern) to the public enum.
+        </li>
+        <li>
+          <strong>String boundary.</strong> Teach
+          <code>polkit_implicit_authorization_from_string</code> /
+          <code>…_to_string</code> the token <code>auth_consent</code> so
+          <code>.policy</code> files can declare it and
+          <code>pkaction --verbose</code> reports it.
+        </li>
+        <li>
+          <strong>Authority.</strong> In the backend's decision path, route the
+          new value to an authentication session as the existing admin path
+          does, flagged as consent-only — the branch that today chooses between
+          "authenticate as self" and "authenticate as admin" gains a third
+          outcome.
+        </li>
+        <li>
+          <strong>Agent interface.</strong> The agent-facing
+          <code>BeginAuthentication</code> call carries an identity list; a
+          consent request carries an <em>empty</em> identity list plus a
+          <code>consent-only</code> hint in its details map. An agent that does
+          not understand the hint sees no identities to authenticate and must
+          fail closed, which is the correct behaviour for an old agent meeting
+          a new policy.
+        </li>
+        <li>
+          <strong>Response.</strong> Reuse
+          <code>AuthenticationAgentResponse2</code> unchanged. The agent
+          reports that the human consented; it never claims an identity was
+          authenticated, because none was asked for.
+        </li>
+      </ol>
+
+      <h3>Changes to polkit-kde-agent-1</h3>
+      <p>
+        Render a two-button dialog when the consent hint is present: the action
+        message, the requesting application, and Allow / Deny. No password
+        field, because there is nothing to type. This is also where Part C
+        attaches — the dialog is presented through the consent surface rather
+        than as an ordinary window.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 860 250" role="img" aria-label="In both the current and proposed flows polkitd remains the gate; the proposed flow replaces the agent's PAM password conversation with a compositor-anchored consent surface, and the response to polkitd carries consent rather than a claimed authentication.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+            </marker>
+            <marker id="ar2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="#A9601F"/>
+            </marker>
+          </defs>
+
+          <!-- lane labels -->
+          <text x="0" y="14" font-family="monospace" font-size="10.5" letter-spacing="1.5" fill="currentColor" opacity="0.55">TODAY</text>
+          <text x="0" y="146" font-family="monospace" font-size="10.5" letter-spacing="1.5" fill="#A9601F" opacity="0.9">PROPOSED</text>
+
+          <!-- TODAY row -->
+          <rect x="0" y="28" width="128" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="64" y="54" font-size="11.5" text-anchor="middle" fill="currentColor">caller</text>
+
+          <line x1="132" y1="49" x2="180" y2="49" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+          <text x="156" y="41" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.7">check</text>
+
+          <rect x="184" y="28" width="128" height="42" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/>
+          <text x="248" y="47" font-size="11.5" text-anchor="middle" fill="currentColor">polkitd</text>
+          <text x="248" y="62" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.65">the gate</text>
+
+          <line x1="316" y1="49" x2="364" y2="49" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+          <text x="340" y="41" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.7">begin</text>
+
+          <rect x="368" y="28" width="128" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="432" y="54" font-size="11.5" text-anchor="middle" fill="currentColor">agent</text>
+
+          <line x1="500" y1="49" x2="548" y2="49" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+          <text x="524" y="41" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.7">PAM</text>
+
+          <rect x="552" y="28" width="150" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="627" y="54" font-size="11.5" text-anchor="middle" fill="currentColor">password dialog</text>
+
+          <line x1="706" y1="49" x2="754" y2="49" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+          <rect x="758" y="28" width="102" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="809" y="54" font-size="11.5" text-anchor="middle" fill="currentColor">human</text>
+
+          <text x="432" y="92" font-size="10.5" text-anchor="middle" fill="currentColor" opacity="0.7">response: “authenticated”</text>
+          <line x1="368" y1="80" x2="316" y2="80" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#ar2)"/>
+
+          <!-- divider -->
+          <line x1="0" y1="116" x2="860" y2="116" stroke="currentColor" stroke-opacity="0.15"/>
+
+          <!-- PROPOSED row -->
+          <rect x="0" y="160" width="128" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="64" y="186" font-size="11.5" text-anchor="middle" fill="currentColor">caller</text>
+
+          <line x1="132" y1="181" x2="180" y2="181" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+          <text x="156" y="173" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.7">check</text>
+
+          <rect x="184" y="160" width="128" height="42" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/>
+          <text x="248" y="179" font-size="11.5" text-anchor="middle" fill="currentColor">polkitd</text>
+          <text x="248" y="194" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.65">still the gate</text>
+
+          <line x1="316" y1="181" x2="364" y2="181" stroke="#A9601F" stroke-width="1.5" marker-end="url(#ar2a)"/>
+          <text x="340" y="173" font-size="10" text-anchor="middle" fill="#A9601F">consent-only</text>
+
+          <rect x="368" y="160" width="128" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="432" y="186" font-size="11.5" text-anchor="middle" fill="currentColor">agent</text>
+
+          <line x1="500" y1="181" x2="548" y2="181" stroke="#A9601F" stroke-width="1.5" marker-end="url(#ar2a)"/>
+          <text x="524" y="173" font-size="10" text-anchor="middle" fill="#A9601F">surface</text>
+
+          <rect x="552" y="160" width="150" height="42" rx="4" fill="none" stroke="#1F6E5E" stroke-width="1.7"/>
+          <text x="627" y="179" font-size="11.5" text-anchor="middle" fill="#1F6E5E">consent surface</text>
+          <text x="627" y="194" font-size="10" text-anchor="middle" fill="#1F6E5E">KWin-enforced</text>
+
+          <line x1="706" y1="181" x2="754" y2="181" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+          <rect x="758" y="160" width="102" height="42" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="809" y="186" font-size="11.5" text-anchor="middle" fill="currentColor">human</text>
+
+          <text x="432" y="224" font-size="10.5" text-anchor="middle" fill="#A9601F">response: “consented” — no identity claimed</text>
+          <line x1="368" y1="212" x2="316" y2="212" stroke="#A9601F" stroke-opacity="0.7" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#ar2a)"/>
+        </svg>
+        <figcaption>
+          The gate does not move. What changes is the leg between agent and
+          human — a PAM password conversation becomes a compositor-guaranteed
+          surface — and what the agent reports back: consent, not a claimed
+          authentication.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="partc">
+      <span class="sec-label">05 — Part C</span>
+      <h2>The compositor as trust anchor</h2>
+
+      <p>
+        A dialog is only as trustworthy as the guarantee that nothing drew over
+        it, nothing synthesised its click, and nothing screenshotted what it
+        showed. Exactly one process in a Wayland session can make those
+        guarantees: the compositor. Part C is a small Wayland protocol,
+        <code>kde_consent_v1</code>, through which KWin grants a surface those
+        properties.
+      </p>
+
+      <div class="note verified">
+        <span class="tag">The mechanism already exists</span>
+        <p>
+          KWin gates privileged interfaces by checking the client's credentials
+          — <code>wl_client_get_credentials</code>, matched against a desktop
+          file declaring <code>X-KDE-Wayland-Interfaces</code>, with
+          <code>wp_security_context</code> for sandboxed clients. We have
+          already used this in production in this project: it is how
+          <code>lnp-dock</code> obtains
+          <code>org_kde_plasma_window_management</code>. KWin also already
+          ships <code>kde_lockscreen_overlay_v1</code>, so a compositor-granted
+          privileged surface role is established practice, not a novelty. And
+          the input-synthesis interface
+          <code>org_kde_kwin_fake_input</code> sits behind the same gate —
+          evidence KWin treats this list as a real boundary.
+        </p>
+      </div>
+
+      <h3>Protocol sketch</h3>
+      <pre><code>interface kde_consent_manager_v1
+  request  get_consent_surface(new_id, wl_surface, cookie)
+      cookie: the polkit authentication cookie, so the compositor
+              can confirm with polkitd that a request is genuinely
+              outstanding rather than fabricated by the client
+
+interface kde_consent_surface_v1
+  event    presented()          shown and holding exclusive input
+  event    dismissed(reason)    user cancelled, or focus/session changed
+  request  destroy()</code></pre>
+
+      <p>While a consent surface is presented, KWin guarantees:</p>
+      <ul>
+        <li>it is stacked above every other surface, including layer-shell;</li>
+        <li>all pointer and keyboard input routes to it exclusively, and
+        <code>fake_input</code> events are dropped for its duration;</li>
+        <li>screencopy and portal capture of its contents are refused;</li>
+        <li>it is torn down on session lock, VT switch, or client death — a
+        consent surface can never be left orphaned on screen.</li>
+      </ul>
+
+      <h3>Why the cookie matters</h3>
+      <p>
+        Binary-path checking answers "is this the real agent?" but not "is
+        there really a request pending?". A stolen or replaced agent binary
+        would defeat the first check alone. Having KWin confirm the cookie with
+        polkitd means a consent surface can only appear when polkitd is
+        genuinely waiting on an answer — the compositor and the authority have
+        to agree before anything is drawn.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 860 300" role="img" aria-label="The agent requests a consent surface presenting the polkit cookie; KWin verifies the client's binary against the trusted-interface list and confirms the cookie with polkitd before presenting the surface with exclusive input, blocking overdraw, synthetic input and screen capture.">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+            </marker>
+            <marker id="ar3t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="#1F6E5E"/>
+            </marker>
+            <marker id="ar3d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="#9E3F35"/>
+            </marker>
+          </defs>
+
+          <!-- agent -->
+          <rect x="0" y="60" width="140" height="50" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="70" y="82" font-size="11.5" text-anchor="middle" fill="currentColor">polkit agent</text>
+          <text x="70" y="98" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.65">uid 1000</text>
+
+          <line x1="144" y1="85" x2="216" y2="85" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+          <text x="180" y="77" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.75">get_consent_surface</text>
+          <text x="180" y="101" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.75">+ cookie</text>
+
+          <!-- kwin -->
+          <rect x="220" y="40" width="190" height="120" rx="5" fill="none" stroke="#1F6E5E" stroke-width="1.8"/>
+          <text x="315" y="64" font-size="12" text-anchor="middle" fill="#1F6E5E">KWin</text>
+          <line x1="236" y1="76" x2="394" y2="76" stroke="#1F6E5E" stroke-opacity="0.3"/>
+          <text x="315" y="94" font-size="10.5" text-anchor="middle" fill="currentColor" opacity="0.8">1 · check client binary</text>
+          <text x="315" y="112" font-size="10.5" text-anchor="middle" fill="currentColor" opacity="0.8">2 · confirm cookie</text>
+          <text x="315" y="130" font-size="10.5" text-anchor="middle" fill="currentColor" opacity="0.8">3 · take exclusive input</text>
+          <text x="315" y="148" font-size="10.5" text-anchor="middle" fill="currentColor" opacity="0.8">4 · present</text>
+
+          <!-- polkitd -->
+          <line x1="315" y1="36" x2="315" y2="14" stroke="#1F6E5E" stroke-width="1.4" marker-end="url(#ar3t)"/>
+          <rect x="238" y="-14" width="154" height="30" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.5"/>
+          <text x="315" y="6" font-size="11" text-anchor="middle" fill="currentColor">polkitd · cookie valid?</text>
+
+          <!-- surface -->
+          <line x1="414" y1="100" x2="486" y2="100" stroke="#1F6E5E" stroke-width="1.6" marker-end="url(#ar3t)"/>
+          <rect x="490" y="72" width="170" height="56" rx="5" fill="none" stroke="#1F6E5E" stroke-width="1.8"/>
+          <text x="575" y="96" font-size="12" text-anchor="middle" fill="#1F6E5E">consent surface</text>
+          <text x="575" y="114" font-size="10.5" text-anchor="middle" fill="#1F6E5E">Allow / Deny</text>
+
+          <line x1="664" y1="100" x2="726" y2="100" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+          <rect x="730" y="72" width="130" height="56" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.45"/>
+          <text x="795" y="104" font-size="11.5" text-anchor="middle" fill="currentColor">human</text>
+
+          <!-- blocked attacks -->
+          <text x="0" y="212" font-family="monospace" font-size="10.5" letter-spacing="1.4" fill="#9E3F35">REFUSED WHILE PRESENTED</text>
+
+          <rect x="0" y="228" width="180" height="46" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.3"/>
+          <text x="90" y="248" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.8">another client</text>
+          <text x="90" y="264" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.8">draws on top</text>
+
+          <rect x="196" y="228" width="180" height="46" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.3"/>
+          <text x="286" y="248" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.8">fake_input</text>
+          <text x="286" y="264" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.8">synthesises a click</text>
+
+          <rect x="392" y="228" width="180" height="46" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.3"/>
+          <text x="482" y="248" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.8">screencopy reads</text>
+          <text x="482" y="264" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.8">what it shows</text>
+
+          <line x1="188" y1="251" x2="196" y2="251" stroke="#9E3F35" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#ar3d)"/>
+          <line x1="384" y1="251" x2="392" y2="251" stroke="#9E3F35" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#ar3d)"/>
+          <line x1="584" y1="251" x2="592" y2="251" stroke="#9E3F35" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#ar3d)"/>
+          <text x="600" y="255" font-size="11" fill="#9E3F35">all refused by the compositor</text>
+        </svg>
+        <figcaption>
+          Two independent checks precede presentation — the client's binary
+          must be on KWin's trusted list, and polkitd must confirm the cookie
+          names a genuinely pending request. Neither alone is sufficient.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="together">
+      <span class="sec-label">06 — Composed</span>
+      <h2>What B and C buy separately</h2>
+
+      <p>
+        The two parts are independently useful, which matters for phasing.
+        <strong>B without C</strong> gives an honest consent mode whose dialog
+        is an ordinary window — better than today on friction and on password
+        exposure, no better on spoofing. <strong>C without B</strong> would
+        harden the existing password dialog against overdraw and capture, which
+        is worth having on its own. Together they produce a click that is worth
+        trusting.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Property</th><th>Today</th><th>B only</th><th>B + C</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Caller can bypass the check</td><td>No</td><td>No</td><td>No</td></tr>
+          <tr><td>Password exposed to a hostile agent</td><td>Yes</td><td>No</td><td>No</td></tr>
+          <tr><td>Dialog can be overdrawn</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+          <tr><td>Click can be synthesised</td><td>Yes<sup>†</sup></td><td>Yes<sup>†</sup></td><td>No</td></tr>
+          <tr><td>Policy file states the truth</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:14px;color:var(--muted);">
+        † Only via <code>org_kde_kwin_fake_input</code>, which already requires
+        a KWin trust grant. The realistic exposure today is overdraw and
+        phishing, not synthesis.
+      </p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="mapping">
+      <span class="sec-label">07 — Application</span>
+      <h2>Which of our actions get which treatment</h2>
+
+      <p>
+        The risk grading already built into <code>lnp-selinux</code> maps
+        directly onto authorization modes. This is the table that says what is
+        protected and what is merely documented.
+      </p>
+
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr><th>Action</th><th>Grade</th><th>Mode</th><th>Reasoning</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>relabel</code></td>
+              <td><span class="pill safe">Safe</span></td>
+              <td><code>auth_consent</code></td>
+              <td>Restores a label policy already defines. Near-zero grant, but not <em>zero</em> — a writer of a security-relevant path could gain a trusted label, so it keeps a prompt rather than becoming <code>yes</code>.</td>
+            </tr>
+            <tr>
+              <td><code>setbool</code></td>
+              <td><span class="pill mod">Moderate</span></td>
+              <td><code>auth_consent</code></td>
+              <td>A documented, reversible, bounded policy switch. Consent is proportionate.</td>
+            </tr>
+            <tr>
+              <td><code>fcontext</code></td>
+              <td><span class="pill mod">Moderate</span></td>
+              <td><code>auth_consent</code></td>
+              <td>Narrow and path-scoped, but it changes policy expectations persistently.</td>
+            </tr>
+            <tr>
+              <td><code>allow-module</code></td>
+              <td><span class="pill high">High</span></td>
+              <td><code>auth_admin</code></td>
+              <td>Permits precisely what was blocked. Keeps a password permanently — this is the one where a phished click would be worth stealing.</td>
+            </tr>
+            <tr>
+              <td>codecs · drivers</td>
+              <td><span class="pill high">High</span></td>
+              <td><code>auth_admin</code></td>
+              <td>Installs software from a third-party repository. Not a candidate.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Note what is absent: no action becomes <code>yes</code>. Silent
+        elevation is how UAC's auto-elevation list became a bypass farm. Every
+        privileged action in LNP should cost a human gesture; the design
+        question is only which gesture.
+      </p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="cost">
+      <span class="sec-label">08 — Cost</span>
+      <h2>What this actually costs to own</h2>
+
+      <p>
+        The engineering is tractable. The <em>maintenance</em> is the real
+        price, and it should be decided with open eyes.
+      </p>
+
+      <ul>
+        <li>
+          <strong>Two carried patch sets</strong>, against <code>polkit</code>
+          and <code>polkit-kde-agent-1</code>, rebased every Fedora release.
+          Both are security-relevant components; a divergent polkit means
+          partly owning its CVE response, and a delayed rebase means delaying
+          security updates for the whole system.
+        </li>
+        <li>
+          <strong>A KWin plugin</strong> tracking a compositor whose internal
+          APIs are explicitly unstable between releases.
+          <code>kwin-devel</code> 6.7.4 is available; the plugin will break on
+          major KWin updates, and a broken consent plugin must fail closed —
+          falling back to the password dialog, never to silent grant.
+        </li>
+        <li>
+          <strong>A protocol we invented.</strong> Unless
+          <code>kde_consent_v1</code> is proposed upstream to KDE, it is ours
+          forever and works on exactly one compositor.
+        </li>
+      </ul>
+
+      <div class="note">
+        <span class="tag">The honest alternative</span>
+        <p>
+          Upstreaming changes the calculus entirely. <code>auth_consent</code>
+          is a coherent addition that other desktops would benefit from, and
+          the compositor-anchored surface is a better answer to a problem
+          GNOME and KDE both have. Carried patches are a cost; an accepted
+          proposal is an asset. If we build this, we should build it to be
+          proposed — which mostly means designing it as though somebody
+          skeptical will review it.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="nongoals">
+      <span class="sec-label">09 — Non-goals</span>
+      <h2>What this deliberately is not</h2>
+
+      <ul>
+        <li>
+          <strong>Not a replacement for authentication.</strong> Consent proves
+          intent, never identity. Anything needing identity keeps a password.
+        </li>
+        <li>
+          <strong>Not a sandbox.</strong> It governs elevation, not what an
+          already-elevated process does afterwards.
+        </li>
+        <li>
+          <strong>Not multi-user.</strong> The reasoning assumes one human at
+          one laptop. A shared machine wants
+          <code>auth_admin</code> throughout, and the policy should say so.
+        </li>
+        <li>
+          <strong>Not a claim to be unbypassable.</strong> If we ship this we
+          state its boundary in the documentation, in the words above — and we
+          do not repeat Microsoft's mistake of letting users infer a stronger
+          promise than the one we made.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="phasing">
+      <span class="sec-label">10 — Phasing</span>
+      <h2>Order of work</h2>
+
+      <p>
+        Each phase is independently shippable and independently abandonable,
+        which is the property that makes it safe to start.
+      </p>
+
+      <ol>
+        <li>
+          <strong>Prototype B against a local polkit build.</strong> No
+          packaging, no system install — prove <code>auth_consent</code> flows
+          end to end from <code>.policy</code> file through polkitd to a
+          stub agent. This is where we learn whether the backend's decision
+          path is as tidy as it looks from outside.
+        </li>
+        <li>
+          <strong>Teach polkit-kde-agent the consent dialog.</strong> Still an
+          ordinary window. At this point the friction problem is solved and
+          the password is off the common path — most of the user-visible win,
+          none of the compositor work.
+        </li>
+        <li>
+          <strong>Add <code>kde_consent_v1</code> to KWin behind the existing
+          trust-grant mechanism.</strong> Exclusive input first, then capture
+          refusal, then the cookie confirmation with polkitd.
+        </li>
+        <li>
+          <strong>Move the agent's dialog onto the consent surface,</strong>
+          with a hard fallback to the password path if the protocol is absent
+          or the plugin refuses.
+        </li>
+        <li>
+          <strong>Propose upstream.</strong> Which, if it succeeds, deletes
+          most of section 08.
+        </li>
+      </ol>
+
+      <hr class="end">
+      <p style="font-size:14px;color:var(--muted);max-width:var(--measure);">
+        Facts about polkit 127 and KWin 6.7.4 in this document were verified
+        against the running Fedora 44 system on 6 August 2026 rather than taken
+        from documentation. The design itself is unbuilt and unreviewed.
+      </p>
+    </section>
+
+  </main>
+</div>

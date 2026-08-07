@@ -1,0 +1,8 @@
+[package]
+name = "lnp-selinux"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.36.0"
+zbus = "5.18.0"

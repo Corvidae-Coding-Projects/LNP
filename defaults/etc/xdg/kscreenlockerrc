@@ -1,0 +1,10 @@
+# LNP screen locking defaults.
+# Sits below ~/.config/kscreenlockerrc in the XDG_CONFIG_DIRS cascade.
+
+[Daemon]
+# Lock after 15 minutes idle, with a grace period so briefly walking away and
+# coming back does not demand a password.
+Autolock=true
+Timeout=15
+LockGrace=60
+LockOnResume=true

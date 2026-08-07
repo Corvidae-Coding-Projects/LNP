@@ -1,0 +1,15 @@
+[Unit]
+Description=LNP security alert notifications
+PartOf=graphical-session.target
+After=graphical-session.target
+# Pointless without a notification service to talk to.
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/lnp-selinux --watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=plasma-workspace.target

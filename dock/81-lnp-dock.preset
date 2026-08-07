@@ -1,0 +1,3 @@
+# Start the LNP dock for every user's graphical session by default.
+# Users can opt out with: systemctl --user disable lnp-dock.service
+enable lnp-dock.service

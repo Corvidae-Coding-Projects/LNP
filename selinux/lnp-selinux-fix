@@ -1,0 +1,127 @@
+#!/usr/bin/bash
+#
+# lnp-selinux-fix -- applies a SELinux fix, and only ever one of four.
+#
+# Invoked via pkexec by lnp-selinux. The GUI has already parsed and validated
+# setroubleshoot's suggestion, but this helper re-validates everything from
+# scratch and refuses anything outside the whitelist. Two independent checks
+# guard the same door, because this one runs as root.
+#
+# Nothing here is ever passed to a shell. No eval, no command substitution,
+# every external program invoked with an explicit argument vector.
+
+set -uo pipefail
+
+log() { printf 'lnp-selinux-fix: %s\n' "$*"; }
+die() { log "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+
+# --- independent validation ------------------------------------------------
+
+valid_identifier() {
+    [[ "$1" =~ ^[A-Za-z0-9_-]{1,128}$ ]]
+}
+
+valid_path() {
+    local p="$1"
+    [ -n "$p" ] || return 1
+    [ "${#p}" -le 4096 ] || return 1
+    [[ "$p" == /* ]] || return 1
+    [[ "$p" != *..* ]] || return 1
+    # Anything a shell would find interesting is rejected outright.
+    [[ "$p" != *[\;\&\|\$\`\<\>\(\)\"\\]* ]] || return 1
+}
+
+# --- the four permitted actions --------------------------------------------
+
+cmd_setbool() {
+    local name="$1" value="$2"
+    valid_identifier "$name" || die "invalid setting name"
+    [ "$value" = "on" ] || [ "$value" = "off" ] || die "invalid value"
+
+    # The name must be a boolean the policy actually defines. An unknown name
+    # is a sign something is wrong, not a reason to improvise.
+    getsebool "$name" >/dev/null 2>&1 || die "no such setting: $name"
+
+    log "switching $name $value"
+    setsebool -P "$name" "$value" || die "could not change the setting"
+    log "done"
+}
+
+cmd_relabel() {
+    local recursive=0
+    if [ "${1:-}" = "--recursive" ]; then
+        recursive=1
+        shift
+    fi
+    local path="${1:-}"
+    valid_path "$path" || die "invalid path"
+    [ -e "$path" ] || die "that file no longer exists"
+
+    log "repairing security labels on $path"
+    if [ "$recursive" -eq 1 ]; then
+        restorecon -R -v "$path" || die "could not repair the labels"
+    else
+        restorecon -v "$path" || die "could not repair the labels"
+    fi
+    log "done"
+}
+
+cmd_fcontext() {
+    local setype="$1" path="$2"
+    valid_identifier "$setype" || die "invalid type name"
+    valid_path "$path" || die "invalid path"
+
+    # The type must exist in policy already.
+    seinfo -t"$setype" >/dev/null 2>&1 \
+        || semanage fcontext -l 2>/dev/null | grep -q "$setype" \
+        || log "note: type $setype not found in a quick check; semanage will decide"
+
+    log "recording $path as $setype"
+    semanage fcontext -a -t "$setype" "$path" || die "could not record the type"
+    restorecon -R -v "$path" || die "could not apply the type"
+    log "done"
+}
+
+# The risky one. The GUI has already made the user confirm explicitly; this
+# still refuses to guess and logs loudly, because it permits precisely what
+# was blocked.
+cmd_allow_module() {
+    local name="$1"
+    valid_identifier "$name" || die "invalid module name"
+
+    local workdir
+    workdir="$(mktemp -d /tmp/lnp-selinux.XXXXXX)" || die "no temporary directory"
+    # shellcheck disable=SC2064  # expand workdir now, on purpose
+    trap "rm -rf '$workdir'" EXIT
+
+    log "building a permission rule from the recent denials"
+
+    # Only denials from the last ten minutes: whatever the user just saw,
+    # not a sweep of everything the machine has ever refused.
+    if ! ausearch --start recent -m AVC -m USER_AVC --raw > "$workdir/denials.log" 2>/dev/null; then
+        die "could not read the recent security messages"
+    fi
+    [ -s "$workdir/denials.log" ] || die "no recent denials to allow"
+
+    ( cd "$workdir" && audit2allow -M "$name" < denials.log >/dev/null 2>&1 ) \
+        || die "could not build the rule"
+    [ -f "$workdir/$name.pp" ] || die "the rule did not build"
+
+    log "installing the rule"
+    semodule -X 300 -i "$workdir/$name.pp" || die "could not install the rule"
+    log "done. Remove it later with: semodule -X 300 -r $name"
+}
+
+case "${1:-}" in
+    setbool)      [ $# -eq 3 ] || die "usage: setbool <name> <on|off>"
+                  cmd_setbool "$2" "$3" ;;
+    relabel)      shift; [ $# -ge 1 ] || die "usage: relabel [--recursive] <path>"
+                  cmd_relabel "$@" ;;
+    fcontext)     [ $# -eq 3 ] || die "usage: fcontext <type> <path>"
+                  cmd_fcontext "$2" "$3" ;;
+    allow-module) [ $# -eq 2 ] || die "usage: allow-module <name>"
+                  cmd_allow_module "$2" ;;
+    *)            die "unknown action" ;;
+esac

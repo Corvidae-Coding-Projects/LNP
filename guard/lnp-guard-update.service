@@ -1,0 +1,14 @@
+[Unit]
+Description=LNP guarded system update
+# Never race the package manager or run without a network.
+After=network-online.target
+Wants=network-online.target
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/lnp-guard update
+# dnf can legitimately take a long time; the snapshot makes patience safe.
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=idle

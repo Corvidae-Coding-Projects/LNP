@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "LNP Project"
+            }
+        ],
+        "Category": "",
+        "Description": "Sane defaults and a familiar dock-based desktop",
+        "Id": "org.lnp.desktop",
+        "License": "GPL-3.0-or-later",
+        "Name": "Linux for Normal People",
+        "Version": "0.1.0"
+    },
+    "Keywords": "Desktop;Workspace;Appearance;Look and Feel;Dock;",
+    "X-Plasma-APIVersion": "2"
+}

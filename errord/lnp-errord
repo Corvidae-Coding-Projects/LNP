@@ -1,0 +1,268 @@
+#!/usr/bin/python3
+"""lnp-errord -- translates system failures into human language.
+
+Linux fails in jargon: AVC denials, unit exit codes, OOM kills. The people
+this desktop is for will never read a journal, so the journal comes to them --
+as a desktop notification that follows the error-message rules interfaces keep
+forgetting (Nielsen, heuristic 9): say what happened in plain words, say
+whether it matters, say what to do next. Never blame the user, never show a
+code where a sentence fits.
+
+Design limits, on purpose:
+  * Translate only failures with a story the user can act on (or safely
+    ignore). Everything else stays in the journal for people who read journals.
+  * Rate-limit hard. The first notification is information; the fifth is spam
+    that teaches people to dismiss all of them.
+  * This daemon holds no privileges. It reads what the journal lets its user
+    read, degrades to the user journal if the system journal is closed, and
+    only ever *shows* things.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+
+# Seconds during which a repeat of the same story is suppressed.
+RATE_LIMIT = 300.0
+
+# Disk warnings repeat far more slowly: the situation changes over days, and
+# a nag every five minutes teaches people to dismiss warnings.
+DISK_RATE_LIMIT = 6 * 3600.0
+DISK_CHECK_INTERVAL = 300.0
+
+# Units whose failure is routine churn, not a story. plasma bits restart
+# themselves; user@ noise would implicate the session itself.
+BORING_UNITS = re.compile(r"^(user@|app-|plasma-|drkonqi)")
+
+
+# ---------------------------------------------------------------- translators
+#
+# Each takes a journal entry (dict) and returns (key, title, body) or None.
+# `key` identifies the story for rate limiting, not the individual event.
+
+
+
+def t_unit_failure(entry):
+    msg = entry.get("MESSAGE", "")
+    unit = entry.get("UNIT") or entry.get("USER_UNIT") or ""
+
+    if "Failed with result" not in msg:
+        return None
+    if not unit:
+        um = re.match(r"^(\S+?\.(?:service|mount)): Failed with result", msg)
+        if not um:
+            return None
+        unit = um.group(1)
+    if BORING_UNITS.match(unit):
+        return None
+
+    name = unit.rsplit(".", 1)[0].replace("-", " ")
+    return (
+        f"unit:{unit}",
+        "A background helper had a problem",
+        f"A part of the system ({name}) stopped unexpectedly. "
+        f"Your computer keeps working and nothing you did caused this. "
+        f"If something seems broken, restarting the computer usually clears it.",
+    )
+
+
+
+def t_guard(entry):
+    """lnp-guard writes its journal lines to be read; surface the two that a
+    person should actually see."""
+    unit = entry.get("_SYSTEMD_UNIT", "")
+    msg = entry.get("MESSAGE", "")
+
+    if unit == "lnp-guard-update.service" and "update finished" in msg:
+        return (
+            "guard:updated",
+            "Your computer updated itself",
+            "Everything is up to date. Nothing is needed from you. "
+            "A snapshot from before the update is kept, so even a bad "
+            "update can be undone.",
+        )
+    if unit == "lnp-reboot-guard.service" and "holding restart" in msg:
+        return (
+            "guard:holding",
+            "One moment before restarting",
+            "A graphics driver update is finishing in the background. "
+            "Restarting is paused for a few minutes so the screen cannot "
+            "go black. You will be able to restart shortly.",
+        )
+    return None
+
+
+def t_oom(entry):
+    msg = entry.get("MESSAGE", "")
+    m = re.search(r"Out of memory: Killed process \d+ \(([^)]+)\)", msg)
+    if not m:
+        return None
+    comm = m.group(1)
+    return (
+        "oom",
+        "The computer ran out of memory",
+        f"“{comm}” had to be closed so everything else could keep running. "
+        f"Anything unsaved in it may be lost — that is what went wrong, "
+        f"not anything you did. Closing unused apps and browser tabs "
+        f"makes this less likely.",
+    )
+
+
+# SELinux denials are owned by lnp-selinux, which shows them with the
+# fixes attached. Translating them here too would notify twice for the
+# same event, with the less useful message winning half the time.
+TRANSLATORS = [t_guard, t_unit_failure, t_oom]
+
+
+# ------------------------------------------------------------- disk guardian
+
+
+def disk_story(percent_used: int):
+    """What to tell someone about a filling disk, if anything."""
+    if percent_used >= 95:
+        return (
+            "disk:critical",
+            "Storage is almost completely full",
+            f"The computer's storage is {percent_used}% full. When it fills "
+            f"up entirely, saving files and even starting apps stop working. "
+            f"Open the Welcome app and choose “Free up space” — it cleans "
+            f"safely, nothing personal is touched.",
+        )
+    if percent_used >= 90:
+        return (
+            "disk:low",
+            "Storage is getting full",
+            f"The computer's storage is {percent_used}% full. Nothing is "
+            f"wrong yet. When you have a minute, open the Welcome app and "
+            f"choose “Free up space”.",
+        )
+    return None
+
+
+def disk_percent(path="/") -> int:
+    st = os.statvfs(path)
+    used = st.f_blocks - st.f_bfree
+    # Percent of what a user can actually consume (excludes root reserve).
+    total = used + st.f_bavail
+    return int(round(used * 100 / total)) if total else 0
+
+
+def disk_watch(last_seen: dict):
+    while True:
+        story = disk_story(disk_percent("/"))
+        if story:
+            key, title, body = story
+            now = time.monotonic()
+            if now - last_seen.get(key, -DISK_RATE_LIMIT) >= DISK_RATE_LIMIT:
+                last_seen[key] = now
+                notify(title, body)
+        time.sleep(DISK_CHECK_INTERVAL)
+
+
+# ------------------------------------------------------------------ plumbing
+
+
+def notify(title: str, body: str) -> bool:
+    """Post a desktop notification; returns whether the server accepted it."""
+    result = subprocess.run(
+        [
+            "gdbus", "call", "--session",
+            "--dest", "org.freedesktop.Notifications",
+            "--object-path", "/org/freedesktop/Notifications",
+            "--method", "org.freedesktop.Notifications.Notify",
+            "lnp-errord", "0", "dialog-warning", title, body,
+            "[]", "{}", "15000",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    ok = result.returncode == 0
+    if ok:
+        print(f"lnp-errord: notified: {title}", flush=True)
+    else:
+        print(f"lnp-errord: notification failed: {result.stderr.strip()}", flush=True)
+    return ok
+
+
+def translate(entry):
+    for t in TRANSLATORS:
+        found = t(entry)
+        if found:
+            return found
+    return None
+
+
+def follow() -> int:
+    # Full journal if this user may read it, own journal otherwise.
+    probe = subprocess.run(
+        ["journalctl", "-q", "-n1", "-o", "cat"], capture_output=True, check=False
+    )
+    scope = [] if probe.returncode == 0 else ["--user"]
+    if scope:
+        print("lnp-errord: system journal not readable; watching user journal only", flush=True)
+
+    proc = subprocess.Popen(
+        ["journalctl", *scope, "-f", "-n0", "-o", "json"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+
+    last_seen: dict[str, float] = {}
+
+    threading.Thread(target=disk_watch, args=(last_seen,), daemon=True).start()
+
+    for line in proc.stdout:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        found = translate(entry)
+        if not found:
+            continue
+
+        key, title, body = found
+        now = time.monotonic()
+        if now - last_seen.get(key, -RATE_LIMIT) < RATE_LIMIT:
+            continue
+        last_seen[key] = now
+
+        notify(title, body)
+
+    return proc.wait()
+
+
+def main() -> int:
+    if "--test-disk" in sys.argv:
+        # lnp-errord --test-disk 93  -> print the story for 93% used.
+        pct = int(sys.argv[sys.argv.index("--test-disk") + 1])
+        story = disk_story(pct)
+        if not story:
+            print("no story")
+            return 1
+        print(f"key: {story[0]}\ntitle: {story[1]}\nbody: {story[2]}")
+        return 0
+
+    if "--test-line" in sys.argv:
+        # Feed one journal-JSON line on stdin, print the translation, change
+        # nothing. This is how the translators are tested without waiting for
+        # real failures.
+        entry = json.loads(sys.stdin.read())
+        found = translate(entry)
+        if not found:
+            print("no translation")
+            return 1
+        key, title, body = found
+        print(f"key: {key}\ntitle: {title}\nbody: {body}")
+        return 0
+
+    return follow()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

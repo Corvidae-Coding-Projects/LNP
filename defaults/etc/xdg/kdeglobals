@@ -1,0 +1,27 @@
+# LNP system-wide KDE defaults.
+#
+# This file sits BELOW ~/.config/kdeglobals in the XDG_CONFIG_DIRS cascade, so
+# every value here is a default that the user silently overrides the moment
+# they change the corresponding setting. Nothing here is enforced.
+#
+# Deliberately does NOT set theme, colour scheme or icons -- those belong to
+# the look-and-feel package (org.lnp.desktop) so there is exactly one owner.
+
+[KDE]
+# Double-click to open. Single-click is Plasma's default and is the single most
+# common "I didn't mean to open that" complaint from people arriving from
+# Windows or macOS.
+SingleClick=false
+
+[General]
+# Font rendering closer to what macOS users expect: antialiased, lightly
+# hinted so glyph shapes are preserved rather than snapped hard to the pixel
+# grid, with subpixel rendering for LCD panels.
+XftAntialias=true
+XftHintStyle=hintslight
+XftSubPixel=rgb
+
+[KFileDialog Settings]
+Show hidden files=false
+Show Speedbar=true
+Show Bookmarks=true

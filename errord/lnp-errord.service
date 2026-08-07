@@ -1,0 +1,13 @@
+[Unit]
+Description=LNP plain-language error notifications
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/lnp-errord
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=plasma-workspace.target

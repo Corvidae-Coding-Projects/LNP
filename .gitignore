@@ -1,0 +1,23 @@
+# Rust build output.
+target/
+
+# `cargo vendor` trees. Regenerated on demand with `cargo vendor ../vendor-staging`
+# and copied into the release tarball at package time -- roughly 500 MB each, and
+# fully reproducible from Cargo.lock, so they have no business in history.
+vendor/
+vendor-staging/
+
+# Build products. The specs and sources here are what's authoritative; the
+# artifacts they produce live in ~/rpmbuild.
+*.rpm
+*.srpm
+*.tar.gz
+
+# Python bytecode, left behind by `python3 -m py_compile` syntax checks.
+__pycache__/
+*.pyc
+
+# Editor and OS noise.
+*~
+*.swp
+.DS_Store

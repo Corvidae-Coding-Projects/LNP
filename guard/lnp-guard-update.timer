@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily LNP guarded update
+
+[Timer]
+OnCalendar=daily
+# Spread load and catch laptops that were asleep at the scheduled time.
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

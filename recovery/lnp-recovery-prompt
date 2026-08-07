@@ -1,0 +1,78 @@
+#!/usr/bin/bash
+#
+# lnp-recovery-prompt -- shown on the console when the desktop cannot start.
+#
+# This is the moment a normal person's laptop usually becomes a brick. The
+# job here is to be calm, be plain, and offer the one action most likely to
+# help: undoing the last system change. Runs on a bare console because if
+# graphics were working we would not be here.
+
+set -u
+
+# --dry: print the menu and exit, for testing off-console.
+DRY=0
+[ "${1:-}" = "--dry" ] && DRY=1
+
+show_menu() {
+    clear 2>/dev/null || true
+    cat <<'EOF'
+
+    ============================================================
+
+        Something went wrong starting the desktop.
+
+        This is usually fixable, and your files are safe.
+
+        Press a number:
+
+          1   Undo the last system change and restart
+              (recommended -- uses the snapshot saved before
+               the last update)
+
+          2   Just try again
+
+          3   Advanced: a command prompt, for whoever
+              helps you with this computer
+
+        If you do nothing, it tries again in 60 seconds.
+
+    ============================================================
+
+EOF
+}
+
+show_menu
+[ "$DRY" -eq 1 ] && exit 0
+
+choice=""
+read -r -t 60 -n 1 choice 2>/dev/null || choice="2"
+echo
+
+case "$choice" in
+    1)
+        echo
+        echo "    Undoing the last system change..."
+        if /usr/libexec/lnp-restore restore-last-update; then
+            echo "    Done. Restarting..."
+            sleep 3
+            systemctl reboot
+        else
+            echo
+            echo "    That did not work. Trying the desktop again instead..."
+            sleep 5
+            systemctl restart display-manager.service
+        fi
+        ;;
+    3)
+        echo
+        echo "    Type 'exit' when finished to try the desktop again."
+        /usr/bin/bash || true
+        systemctl restart display-manager.service
+        ;;
+    *)
+        echo
+        echo "    Trying again..."
+        sleep 2
+        systemctl restart display-manager.service
+        ;;
+esac

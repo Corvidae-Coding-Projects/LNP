@@ -1,0 +1,8 @@
+[Unit]
+Description=LNP reboot guard (waits for the graphics driver to be ready)
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/lnp-guard guard
+# The unit succeeds by exiting once restart is safe.
+Restart=no

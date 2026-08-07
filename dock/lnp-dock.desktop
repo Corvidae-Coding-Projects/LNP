@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LNP Dock
+Comment=Dock for Linux for Normal People
+Exec=/usr/bin/lnp-dock
+Icon=preferences-system-windows
+NoDisplay=true
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management

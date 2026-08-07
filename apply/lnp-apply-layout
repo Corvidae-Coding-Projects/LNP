@@ -1,0 +1,230 @@
+#!/usr/bin/bash
+#
+# lnp-apply-layout -- apply the LNP desktop layout to the current user.
+#
+# Runs unprivileged, inside the user's own graphical session, because Plasma's
+# per-user configuration cannot be safely rewritten by root while a session is
+# live. Installing the RPM enables this as a systemd user service, so every
+# user picks the layout up at their next login.
+#
+# Idempotent: compares the shipped layout version against a per-user stamp and
+# does nothing when they already match. Always takes a backup before it
+# touches anything, and --revert puts that backup back.
+
+set -uo pipefail
+
+readonly LNP_ID="org.lnp.desktop"
+readonly VERSION_FILE="/usr/share/lnp/layout-version"
+readonly STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/lnp"
+readonly STAMP="${STATE_DIR}/applied-version"
+readonly CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}"
+
+# Everything the apply path can plausibly disturb.
+readonly BACKED_UP_FILES=(
+    plasma-org.kde.plasma.desktop-appletsrc
+    plasmashellrc
+    plasmarc
+    kwinrc
+    kdeglobals
+    kcminputrc
+    kscreenlockerrc
+)
+
+log()  { printf 'lnp-apply-layout: %s\n' "$*" >&2; }
+die()  { log "$*"; exit 1; }
+
+usage() {
+    cat <<'EOF'
+Usage: lnp-apply-layout [--force|--revert|--status|--help]
+
+  (no args)  Apply the LNP layout, unless the stamp says it is already applied.
+  --force    Apply even if the stamp says it is already applied.
+  --revert   Restore the most recent backup taken before an apply.
+  --status   Report shipped version, applied version and available backups.
+
+Applying rebuilds the Plasma panel layout. The previous configuration is
+always backed up to ~/.local/state/lnp/ first.
+EOF
+}
+
+in_plasma_session() {
+    pgrep -u "$(id -u)" -x plasmashell >/dev/null 2>&1
+}
+
+shipped_version() {
+    [ -r "$VERSION_FILE" ] || return 1
+    tr -d '[:space:]' < "$VERSION_FILE"
+}
+
+applied_version() {
+    [ -r "$STAMP" ] || return 1
+    tr -d '[:space:]' < "$STAMP"
+}
+
+take_backup() {
+    local dir
+    dir="${STATE_DIR}/backup-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$dir" || die "could not create backup directory ${dir}"
+
+    local f saved=0
+    for f in "${BACKED_UP_FILES[@]}"; do
+        if [ -f "${CONFIG_DIR}/${f}" ]; then
+            cp -a "${CONFIG_DIR}/${f}" "${dir}/" && saved=$(( saved + 1 ))
+        fi
+    done
+
+    ln -sfn "$dir" "${STATE_DIR}/backup-latest"
+    log "backed up ${saved} file(s) to ${dir}"
+}
+
+# Write a touchpad setting ONLY if the user has no value for it.
+#
+# This matters more here than anywhere else in the project. The /etc/xdg files
+# are a *cascade*: they sit below ~/.config, so a user's choice silently wins
+# and nothing is destroyed. These writes go directly into ~/.config, where
+# there is no lower layer -- an unconditional write does not "set a default",
+# it overwrites a preference, every single time the applier runs.
+touchpad_set_if_unset() {
+    local vdec="$1" pdec="$2" name="$3" key="$4" value="$5"
+
+    if [ -n "$(kreadconfig6 --file kcminputrc \
+                 --group Libinput --group "$vdec" --group "$pdec" --group "$name" \
+                 --key "$key" 2>/dev/null)" ]; then
+        log "touchpad: leaving $key as you have it"
+        return 0
+    fi
+
+    kwriteconfig6 --file kcminputrc \
+        --group Libinput --group "$vdec" --group "$pdec" --group "$name" \
+        --key "$key" "$value"
+}
+
+# Touchpad preferences live under [Libinput][vendor][product][name] in
+# kcminputrc, keyed per physical device. There is therefore no single global
+# default we can ship in /etc/xdg -- we have to look at what this machine
+# actually has and write a group per device.
+configure_touchpads() {
+    local vendor="" product="" name="" count=0
+
+    while IFS= read -r line; do
+        case "$line" in
+            I:*)
+                vendor=$(printf '%s\n' "$line" | sed -n 's/.*Vendor=\([0-9a-fA-F]\{1,\}\).*/\1/p')
+                product=$(printf '%s\n' "$line" | sed -n 's/.*Product=\([0-9a-fA-F]\{1,\}\).*/\1/p')
+                ;;
+            N:*)
+                name=$(printf '%s\n' "$line" | sed -n 's/^N: Name="\(.*\)"$/\1/p')
+
+                # Only touchpads; leave mice and trackpoints alone, since
+                # natural scrolling on a mouse wheel is not what people mean.
+                case "$name" in
+                    *[Tt]ouchpad*|*TOUCHPAD*|*[Tt]rackpad*) ;;
+                    *) continue ;;
+                esac
+
+                [ -n "$vendor" ] && [ -n "$product" ] || continue
+
+                local vdec pdec
+                vdec=$(( 16#${vendor} ))
+                pdec=$(( 16#${product} ))
+
+                # Tap-to-click is what nearly every laptop ships with, and its
+                # absence reads as a broken touchpad rather than a setting.
+                touchpad_set_if_unset "$vdec" "$pdec" "$name" TapToClick true
+
+                # Deliberately NOT set here, and worth recording why:
+                #
+                #   DisableWhileTyping -- looks like an obviously sane default
+                #   and is actively hostile in a terminal, which is the one
+                #   place you type constantly and then immediately reach for
+                #   the touchpad to select the output. It deadens the pad for
+                #   a few hundred milliseconds after every keystroke, so
+                #   selecting text feels like the mouse has died. Reported as
+                #   exactly that, and it was ours.
+                #
+                #   NaturalScroll -- a real preference, not a default.
+                #   Reversing someone's scroll direction unannounced is the
+                #   most jarring change you can make to a laptop. It belongs
+                #   in the welcome app as a visible choice, not in a script.
+
+                count=$(( count + 1 ))
+                log "configured touchpad: ${name} (${vdec}/${pdec})"
+                ;;
+        esac
+    done < /proc/bus/input/devices
+
+    [ "$count" -eq 0 ] && log "no touchpad found; skipping touchpad defaults"
+    return 0
+}
+
+do_apply() {
+    local force="$1"
+
+    local shipped
+    shipped=$(shipped_version) || { log "no shipped version file at ${VERSION_FILE}; nothing to do"; exit 0; }
+
+    local applied
+    applied=$(applied_version) || applied=""
+
+    if [ "$force" != "yes" ] && [ "$applied" = "$shipped" ]; then
+        log "layout ${shipped} already applied; nothing to do"
+        exit 0
+    fi
+
+    if ! in_plasma_session; then
+        log "no plasmashell running for this user; deferring until next login"
+        exit 0
+    fi
+
+    mkdir -p "$STATE_DIR" || die "could not create ${STATE_DIR}"
+    take_backup
+
+    log "applying look-and-feel ${LNP_ID} (layout ${shipped})"
+    if ! plasma-apply-lookandfeel --apply "$LNP_ID" --resetLayout; then
+        die "plasma-apply-lookandfeel failed; your previous config is in ${STATE_DIR}/backup-latest"
+    fi
+
+    configure_touchpads
+
+    printf '%s\n' "$shipped" > "$STAMP"
+    log "applied. Revert with: lnp-apply-layout --revert"
+}
+
+do_revert() {
+    local latest="${STATE_DIR}/backup-latest"
+    [ -d "$latest" ] || die "no backup found at ${latest}"
+
+    local f restored=0
+    for f in "${BACKED_UP_FILES[@]}"; do
+        if [ -f "${latest}/${f}" ]; then
+            cp -a "${latest}/${f}" "${CONFIG_DIR}/" && restored=$(( restored + 1 ))
+        fi
+    done
+
+    rm -f "$STAMP"
+    log "restored ${restored} file(s) from ${latest}"
+    log "log out and back in for the restored layout to take effect"
+}
+
+do_status() {
+    local shipped applied
+    shipped=$(shipped_version) || shipped="(none installed)"
+    applied=$(applied_version) || applied="(never applied)"
+
+    printf 'shipped layout version : %s\n' "$shipped"
+    printf 'applied layout version : %s\n' "$applied"
+    printf 'plasma session running : %s\n' "$(in_plasma_session && echo yes || echo no)"
+    printf 'backups:\n'
+    if [ -d "$STATE_DIR" ]; then
+        find "$STATE_DIR" -maxdepth 1 -name 'backup-2*' -printf '  %f\n' 2>/dev/null | sort || true
+    fi
+}
+
+case "${1:-}" in
+    "")         do_apply no ;;
+    --force)    do_apply yes ;;
+    --revert)   do_revert ;;
+    --status)   do_status ;;
+    -h|--help)  usage ;;
+    *)          usage; exit 2 ;;
+esac

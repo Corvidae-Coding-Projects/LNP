@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome
+Comment=First-run welcome for the LNP desktop
+Exec=/usr/bin/lnp-welcome --autostart
+Icon=preferences-desktop
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2

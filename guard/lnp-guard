@@ -1,0 +1,166 @@
+#!/usr/bin/bash
+#
+# lnp-guard -- updates that cannot hurt you.
+#
+# Three jobs, all root-side, all invoked by systemd units or by lnp-setup:
+#
+#   snapshot <tag>   Read-only btrfs snapshot of the root subvolume, taken
+#                    into the top-level "snapshots" subvolume, pruned to a
+#                    small keep-count. This is what lnp-restore restores.
+#   reboot-safe      Exit 0 iff restarting now cannot break graphics: for the
+#                    newest installed kernel, the NVIDIA module either exists
+#                    or is not needed.
+#   guard            Hold a logind "block" inhibitor on shutdown/reboot while
+#                    reboot-safe fails, releasing it the moment the module
+#                    appears. Started by a path unit when a new kernel lands.
+#   update           snapshot, then apply updates, then report in the journal
+#                    in words a person can read.
+#
+# Everything here says what it does to the journal; lnp-errord turns the
+# lines that matter into notifications.
+
+set -uo pipefail
+
+readonly TOP=/run/lnp/top
+readonly SNAPDIR_NAME=snapshots
+readonly KEEP_SNAPSHOTS=5
+
+log() { echo "lnp-guard: $*"; }
+die() { log "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+
+root_device() {
+    findmnt -n -o SOURCE / | sed 's/\[.*\]//'
+}
+
+mount_top() {
+    mkdir -p "$TOP"
+    mountpoint -q "$TOP" && return 0
+    mount -o subvolid=5 "$(root_device)" "$TOP" || die "cannot mount btrfs top level"
+}
+
+umount_top() {
+    mountpoint -q "$TOP" && umount "$TOP"
+}
+
+cmd_snapshot() {
+    local tag="${1:-manual}"
+
+    [ "$(findmnt -n -o FSTYPE /)" = "btrfs" ] || die "root is not btrfs; snapshots unavailable"
+
+    mount_top
+    trap umount_top EXIT
+
+    if [ ! -d "$TOP/$SNAPDIR_NAME" ]; then
+        btrfs subvolume create "$TOP/$SNAPDIR_NAME" >/dev/null \
+            || die "cannot create the snapshots subvolume"
+    fi
+
+    local name
+    name="$(date +%Y%m%d-%H%M%S)-${tag}"
+    btrfs subvolume snapshot -r "$TOP/root" "$TOP/$SNAPDIR_NAME/$name" >/dev/null \
+        || die "snapshot failed"
+    log "saved a system snapshot: $name"
+
+    # Prune, oldest first, keeping the most recent KEEP_SNAPSHOTS.
+    local all count
+    all=$(ls -1 "$TOP/$SNAPDIR_NAME" | sort)
+    count=$(wc -l <<<"$all")
+    if [ "$count" -gt "$KEEP_SNAPSHOTS" ]; then
+        head -n "$(( count - KEEP_SNAPSHOTS ))" <<<"$all" | while read -r old; do
+            [ -n "$old" ] || continue
+            btrfs subvolume delete "$TOP/$SNAPDIR_NAME/$old" >/dev/null \
+                && log "pruned old snapshot: $old"
+        done
+    fi
+}
+
+newest_kernel() {
+    ls -1 /usr/lib/modules | sort -V | tail -1
+}
+
+# Restarting is safe when the newest kernel can drive the screen.
+cmd_reboot_safe() {
+    # No NVIDIA driver installed -> nothing to wait for.
+    rpm -q akmod-nvidia >/dev/null 2>&1 || return 0
+
+    local kver
+    kver="$(newest_kernel)"
+    [ -n "$kver" ] || return 0
+
+    if compgen -G "/usr/lib/modules/$kver/extra/nvidia*/nvidia*.ko*" >/dev/null \
+        || compgen -G "/usr/lib/modules/$kver/weak-updates/nvidia*/nvidia*.ko*" >/dev/null; then
+        return 0
+    fi
+
+    log "the graphics driver for kernel $kver is still being prepared"
+    return 1
+}
+
+cmd_guard() {
+    if cmd_reboot_safe; then
+        log "restart is safe; nothing to guard"
+        exit 0
+    fi
+
+    log "holding restart until the graphics driver finishes building (usually a few minutes)"
+
+    # The inhibitor lives exactly as long as this process. systemd-inhibit
+    # blocks logind-initiated reboot/shutdown; KDE surfaces the reason text.
+    exec systemd-inhibit \
+        --what=shutdown \
+        --mode=block \
+        --who="LNP" \
+        --why="Finishing a graphics driver update -- restarting now could leave the screen black" \
+        bash -c '
+            while ! /usr/libexec/lnp-guard reboot-safe >/dev/null 2>&1; do
+                sleep 10
+            done
+            echo "lnp-guard: graphics driver ready; restart is safe again"
+        '
+}
+
+cmd_update() {
+    log "checking for updates"
+
+    # A snapshot first, always: the undo for everything that follows.
+    /usr/libexec/lnp-guard snapshot pre-update || die "not updating without a snapshot"
+
+    if dnf -y --refresh upgrade 2>&1 | tail -20; then
+        log "update finished. Your computer is up to date; nothing is needed from you."
+    else
+        die "update did not finish. Nothing is lost: the system still runs, and a snapshot from before the attempt is kept."
+    fi
+
+    # A kernel may have arrived; make sure the guard is watching before
+    # anyone reaches for the restart button.
+    systemctl start lnp-reboot-guard.service --no-block 2>/dev/null || true
+}
+
+cmd_prune() {
+    local keep="${1:-3}"
+    mount_top
+    trap umount_top EXIT
+    [ -d "$TOP/$SNAPDIR_NAME" ] || { log "no snapshots yet"; return 0; }
+
+    local all count
+    all=$(ls -1 "$TOP/$SNAPDIR_NAME" | sort)
+    count=$(wc -l <<<"$all")
+    if [ "$count" -gt "$keep" ]; then
+        head -n "$(( count - keep ))" <<<"$all" | while read -r old; do
+            [ -n "$old" ] || continue
+            btrfs subvolume delete "$TOP/$SNAPDIR_NAME/$old" >/dev/null \
+                && log "pruned old snapshot: $old"
+        done
+    fi
+}
+
+case "${1:-}" in
+    snapshot)     shift; cmd_snapshot "$@" ;;
+    prune)        shift; cmd_prune "$@" ;;
+    reboot-safe)  cmd_reboot_safe ;;
+    guard)        cmd_guard ;;
+    update)       cmd_update ;;
+    *)            die "usage: lnp-guard snapshot [tag] | prune [keep] | reboot-safe | guard | update" ;;
+esac

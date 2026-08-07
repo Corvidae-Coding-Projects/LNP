@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch for new kernels needing the reboot guard
+
+[Path]
+# A new kernel appears as a new directory here; the guard service then holds
+# restarts until that kernel's graphics module exists.
+PathChanged=/usr/lib/modules
+Unit=lnp-reboot-guard.service
+
+[Install]
+WantedBy=multi-user.target

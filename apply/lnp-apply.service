@@ -1,0 +1,17 @@
+[Unit]
+Description=Apply the LNP desktop layout
+# The applier drives plasma-apply-lookandfeel, so the shell has to be up first.
+After=plasma-plasmashell.service
+PartOf=graphical-session.target
+ConditionEnvironment=XDG_CURRENT_DESKTOP=KDE
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/lnp-apply-layout
+# The applier is idempotent and exits 0 when there is nothing to do, so a
+# failure here is a real failure and should be visible in the journal rather
+# than silently retried.
+RemainAfterExit=no
+
+[Install]
+WantedBy=plasma-workspace.target

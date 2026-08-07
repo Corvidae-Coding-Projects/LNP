@@ -1,0 +1,35 @@
+# LNP look-and-feel defaults.
+# Format: [file][Group] then key=value.
+# These are applied when the look-and-feel package is applied. Anything the
+# user subsequently changes lives in ~/.config and wins over this.
+
+[kdeglobals][KDE]
+widgetStyle=Breeze
+# Single-click to open is a common source of "I didn't mean to do that" for
+# people arriving from Windows or macOS. Double-click is the least surprising.
+SingleClick=false
+
+[kdeglobals][General]
+ColorScheme=BreezeLight
+
+[kdeglobals][Icons]
+Theme=breeze
+
+[plasmarc][Theme]
+name=default
+
+[Wallpaper]
+Image=Fedora
+
+[kcminputrc][Mouse]
+cursorTheme=breeze_cursors
+cursorSize=24
+
+# NOTE: window decoration settings deliberately do NOT live here.
+# plasma-apply-lookandfeel ignores the [kwinrc] sections of this file --
+# verified empirically: applying this package rewrote the colour blocks in
+# kdeglobals but never touched kwinrc. Window button order is therefore
+# delivered via /etc/xdg/kwinrc in the lnp-defaults package, which works.
+
+[ksplashrc][KSplash]
+Theme=org.kde.breeze.desktop

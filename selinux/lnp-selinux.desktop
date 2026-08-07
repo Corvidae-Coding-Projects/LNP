@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Security Alerts
+GenericName=SELinux Alert Browser
+Comment=See what your computer blocked, and fix it
+Exec=/usr/bin/lnp-selinux
+Icon=security-high
+Terminal=false
+Categories=System;Security;Settings;
+Keywords=selinux;security;denied;blocked;permission;alert;
+StartupWMClass=org.lnp.selinux

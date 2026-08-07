@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>LNP Project</vendor>
+
+  <action id="org.lnp.setup">
+    <description>Set up media formats and drivers</description>
+    <message>Setting this up needs the administrator password</message>
+    <icon_name>preferences-desktop-multimedia</icon_name>
+    <defaults>
+      <!-- auth_admin_keep: one password covers the whole welcome session, so
+           setting up codecs and then a driver does not prompt twice. -->
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/lnp-setup</annotate>
+  </action>
+</policyconfig>

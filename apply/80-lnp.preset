@@ -1,0 +1,7 @@
+# Enable the LNP layout applier for every user by default.
+#
+# This is what delivers "auto-apply on install": the unit is enabled globally,
+# runs once per user at their next Plasma login, and is a no-op thereafter
+# because it stamps the applied version. It backs up the previous config
+# before making any change, and lnp-apply-layout --revert restores it.
+enable lnp-apply.service

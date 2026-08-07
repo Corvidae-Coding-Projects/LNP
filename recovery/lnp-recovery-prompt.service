@@ -1,0 +1,18 @@
+[Unit]
+Description=LNP recovery helper (desktop failed to start)
+# Take over the first console; the display manager is not using it if we are
+# running.
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+Type=idle
+ExecStart=/usr/libexec/lnp-recovery-prompt
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+# The prompt hands control back by restarting sddm itself.
+Restart=no

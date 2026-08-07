@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>LNP Project</vendor>
+
+  <action id="org.lnp.selinux.fix">
+    <description>Apply a security permission fix</description>
+    <message>Changing security permissions needs the administrator password</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <!-- Deliberately auth_admin, not auth_admin_keep: each security change
+           is confirmed on its own. Caching the authorisation would let a
+           second, unrelated fix ride in on the first one's password. -->
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/lnp-selinux-fix</annotate>
+  </action>
+</policyconfig>

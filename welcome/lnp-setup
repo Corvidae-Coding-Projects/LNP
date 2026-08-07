@@ -1,0 +1,150 @@
+#!/usr/bin/bash
+#
+# lnp-setup -- the privileged half of the LNP welcome app.
+#
+# Runs as root via pkexec (see org.lnp.setup.policy). The GUI shows this
+# script's stdout to the user line by line, so every echo here is user-facing
+# copy: plain language, present tense, no jargon.
+#
+# Every subcommand is idempotent: run twice, the second run finds the work
+# done and says so.
+
+set -uo pipefail
+
+die() {
+    echo "$*" >&2
+    exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || die "This program must be run by the system, not directly."
+
+# Progress messages the GUI surfaces directly.
+say() { echo "==> $*"; }
+
+ensure_rpmfusion() {
+    local rel
+    rel=$(rpm -E %fedora)
+
+    if ! rpm -q rpmfusion-free-release >/dev/null 2>&1; then
+        say "Adding the add-on software source (free)"
+        dnf install -y \
+            "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${rel}.noarch.rpm" \
+            || die "Could not add the software source. Check the internet connection and try again."
+    fi
+
+    if ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
+        say "Adding the add-on software source (nonfree)"
+        dnf install -y \
+            "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${rel}.noarch.rpm" \
+            || die "Could not add the software source. Check the internet connection and try again."
+    fi
+}
+
+cmd_codecs() {
+    ensure_rpmfusion
+
+    if ! rpm -q ffmpeg >/dev/null 2>&1; then
+        say "Installing the full set of video and audio formats"
+        # Fedora ships a limited ffmpeg for patent reasons; swap in the full one.
+        dnf swap -y ffmpeg-free ffmpeg --allowerasing \
+            || die "Installing the media formats did not finish. Nothing is broken; try again later."
+    fi
+
+    say "Installing extra playback plugins"
+    dnf install -y gstreamer1-plugins-ugly gstreamer1-plugins-bad-freeworld \
+        || die "Installing the playback plugins did not finish. Nothing is broken; try again later."
+
+    say "Done. Videos and music should now play everywhere."
+}
+
+cmd_nvidia() {
+    ensure_rpmfusion
+
+    if rpm -q akmod-nvidia >/dev/null 2>&1; then
+        say "The NVIDIA driver is already installed."
+        exit 0
+    fi
+
+    say "Installing the NVIDIA graphics driver"
+    dnf install -y akmod-nvidia \
+        || die "Installing the driver did not finish. Nothing is broken; try again later."
+
+    say "Done. The driver finishes preparing in the background;"
+    say "restart the computer in about five minutes to start using it."
+}
+
+cmd_clean() {
+    local before after
+    before=$(df --output=avail -B1M / | tail -1 | tr -d ' ')
+
+    say "Tidying old system logs"
+    journalctl --vacuum-size=200M >/dev/null 2>&1
+
+    say "Clearing downloaded package files"
+    dnf clean packages -y >/dev/null 2>&1
+
+    if command -v flatpak >/dev/null; then
+        say "Removing unused app runtimes"
+        flatpak uninstall --unused -y >/dev/null 2>&1
+    fi
+
+    if [ -x /usr/libexec/lnp-guard ]; then
+        say "Trimming old system snapshots"
+        /usr/libexec/lnp-guard prune 3 >/dev/null 2>&1
+    fi
+
+    after=$(df --output=avail -B1M / | tail -1 | tr -d ' ')
+    local freed=$(( after - before ))
+    [ "$freed" -lt 0 ] && freed=0
+    say "Done. Freed about ${freed} MB. Nothing personal was touched."
+}
+
+cmd_secure() {
+    say "Checking the security setup"
+
+    # Better SELinux explanations: setroubleshoot analyses denials and its
+    # words are what the notification service prefers to show.
+    if ! rpm -q setroubleshoot-server >/dev/null 2>&1; then
+        say "Installing the security explainer"
+        dnf install -y setroubleshoot-server >/dev/null 2>&1 \
+            || say "Could not install the security explainer; skipping."
+    fi
+
+    # Report, never flip: someone who disabled enforcement did it on purpose.
+    if [ "$(getenforce 2>/dev/null)" != "Enforcing" ]; then
+        say "Note: the built-in security system (SELinux) is not fully on."
+    fi
+
+    if systemctl list-unit-files firewalld.service >/dev/null 2>&1; then
+        say "Making sure the firewall is on"
+        systemctl enable --now firewalld >/dev/null 2>&1
+    fi
+
+    if systemctl list-unit-files fwupd-refresh.timer >/dev/null 2>&1; then
+        say "Turning on firmware update checks"
+        systemctl enable --now fwupd-refresh.timer >/dev/null 2>&1
+    fi
+
+    say "Encrypting name lookups where possible"
+    mkdir -p /etc/systemd/resolved.conf.d
+    printf '[Resolve]\nDNSOverTLS=opportunistic\n' \
+        > /etc/systemd/resolved.conf.d/lnp-security.conf
+    systemctl try-restart systemd-resolved >/dev/null 2>&1
+
+    # Report-only: turning off remote login behind someone's back could cut
+    # off the person who actually maintains this machine.
+    if systemctl is-enabled sshd >/dev/null 2>&1; then
+        say "Note: remote login (SSH) is enabled on this computer."
+        say "If nobody uses it to reach this machine, it is safer off."
+    fi
+
+    say "Done. Security checkup finished."
+}
+
+case "${1:-}" in
+    codecs) cmd_codecs ;;
+    nvidia) cmd_nvidia ;;
+    clean)  cmd_clean ;;
+    secure) cmd_secure ;;
+    *) die "usage: lnp-setup codecs|nvidia|clean|secure" ;;
+esac

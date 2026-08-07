@@ -1,0 +1,18 @@
+# LNP file manager defaults.
+# Sits below ~/.config/dolphinrc in the XDG_CONFIG_DIRS cascade.
+
+[General]
+BrowseThroughArchives=true
+ShowFullPath=false
+RememberOpenedTabs=false
+# Closing several tabs at once is recoverable and the prompt is noise.
+ConfirmClosingMultipleTabs=false
+# Deleting is not recoverable, so this prompt stays.
+ConfirmDelete=true
+ShowSelectionToggle=true
+
+[IconsMode]
+PreviewSize=64
+
+[DetailsMode]
+PreviewSize=22

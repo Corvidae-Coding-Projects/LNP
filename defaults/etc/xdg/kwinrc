@@ -1,0 +1,51 @@
+# LNP window manager defaults.
+#
+# Sits below ~/.config/kwinrc in the XDG_CONFIG_DIRS cascade.
+#
+# Effect IDs for built-in effects are derived from their filename in
+# /usr/share/kwin-wayland/builtin-effects/, e.g. magiclamp.json -> magiclamp.
+# Note there is no separate "contrast" effect in Plasma 6.7.
+
+# Window controls on the left, macOS-style: close, minimise, maximise.
+#
+# This lives here rather than in the look-and-feel package's "defaults" file
+# because plasma-apply-lookandfeel does NOT apply the [kwinrc] sections of that
+# file -- verified empirically: applying org.lnp.desktop rewrote the colour
+# blocks in kdeglobals but left kwinrc's mtime untouched. The XDG_CONFIG_DIRS
+# cascade does work, so the setting is delivered that way instead.
+#
+# Breeze button codes: X=close I=minimise A=maximise M=menu S=all-desktops
+# H=help F=keep-above B=keep-below
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnLeft=XIA
+ButtonsOnRight=
+
+[Compositing]
+# 3 is Plasma's normal speed. Stated explicitly so the value is owned rather
+# than inherited, since animation timing is central to how the desktop feels.
+AnimationSpeed=3
+LatencyPolicy=Low
+
+[Plugins]
+# Genie-style minimise. This is the closest stock equivalent to the macOS
+# minimise animation and costs us no new code.
+magiclampEnabled=true
+# Squash is the competing minimise animation; both at once is undefined.
+squashEnabled=false
+
+blurEnabled=true
+slidingpopupsEnabled=true
+# Wobbly windows read as a novelty rather than a polished desktop.
+wobblywindowsEnabled=false
+
+[Windows]
+FocusPolicy=ClickToFocus
+DelayFocusInterval=0
+# Alt-tab wrapping around rather than stopping at the ends.
+SeparateScreenFocus=false
+
+[Desktops]
+Number=1
+Rows=1

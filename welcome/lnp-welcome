@@ -1,0 +1,485 @@
+#!/usr/bin/python3
+"""lnp-welcome -- the first-run welcome app for Linux for Normal People.
+
+This is where the project's promise is kept or broken: everything LNP can do
+must be reachable from here with a mouse. The copy follows the error-message
+literature (plain language, say what happened, say what to do next); the
+structure is a plain wizard because a wizard is the one GUI idiom nobody has
+ever needed explained to them.
+
+Privileged work (codecs, drivers) is delegated to /usr/libexec/lnp-setup via
+pkexec, so the only password prompt the user ever sees is the system's own
+authentication dialog.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QProcess, Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWizard,
+    QWizardPage,
+)
+
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "lnp"
+STAMP = STATE_DIR / "welcome-done"
+
+
+# --------------------------------------------------------------- system state
+
+
+def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+
+def rpm_installed(name: str) -> bool:
+    return _run(["rpm", "-q", name]).returncode == 0
+
+
+def has_nvidia_gpu() -> bool:
+    # Vendor 10de is NVIDIA; class 03xx is a display controller.
+    out = _run(["lspci", "-n", "-d", "10de:"]).stdout
+    return any(line.split()[1].startswith("03") for line in out.splitlines() if line.split())
+
+
+def nvidia_driver_loaded() -> bool:
+    try:
+        return any(l.startswith("nvidia ") for l in Path("/proc/modules").read_text().splitlines())
+    except OSError:
+        return False
+
+
+def dock_enabled() -> bool:
+    return _run(["systemctl", "--user", "is-enabled", "lnp-dock.service"]).stdout.strip() == "enabled"
+
+
+def have_backup() -> bool:
+    return (STATE_DIR / "backup-latest").exists()
+
+
+def disk_percent(path="/") -> int:
+    st = os.statvfs(path)
+    used = st.f_blocks - st.f_bfree
+    total = used + st.f_bavail
+    return int(round(used * 100 / total)) if total else 0
+
+
+def system_state() -> dict:
+    return {
+        "disk_percent": disk_percent("/"),
+        "codecs": rpm_installed("ffmpeg") and rpm_installed("gstreamer1-plugins-ugly"),
+        "nvidia_gpu": has_nvidia_gpu(),
+        "nvidia_driver": rpm_installed("akmod-nvidia"),
+        "nvidia_loaded": nvidia_driver_loaded(),
+        "dock_enabled": dock_enabled(),
+        "have_backup": have_backup(),
+    }
+
+
+# ------------------------------------------------------------------ UI pieces
+
+
+def body_label(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setWordWrap(True)
+    label.setTextFormat(Qt.TextFormat.RichText)
+    return label
+
+
+class ActionPage(QWizardPage):
+    """A page with one privileged action button and honest progress reporting.
+
+    The pattern both the codecs and driver pages share: a "do it" button, a
+    live status line fed from the helper's ==> messages, and the full output
+    tucked behind a details toggle -- visible when wanted, never forced on
+    someone it would only alarm.
+    """
+
+    def __init__(self, action: str, button_text: str, done_text: str):
+        super().__init__()
+        self.action = action
+        self.done_text = done_text
+        self.proc: QProcess | None = None
+
+        self.layout_ = QVBoxLayout(self)
+
+        self.button = QPushButton(button_text)
+        self.button.clicked.connect(self.start)
+
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+
+        self.details_toggle = QPushButton("Show details")
+        self.details_toggle.setFlat(True)
+        self.details_toggle.setVisible(False)
+        self.details_toggle.clicked.connect(self.toggle_details)
+
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setVisible(False)
+        self.log.setMaximumBlockCount(2000)
+
+    def finish_layout(self):
+        self.layout_.addWidget(self.button)
+        self.layout_.addWidget(self.status)
+        self.layout_.addWidget(self.details_toggle)
+        self.layout_.addWidget(self.log)
+        self.layout_.addStretch(1)
+
+    def toggle_details(self):
+        show = not self.log.isVisible()
+        self.log.setVisible(show)
+        self.details_toggle.setText("Hide details" if show else "Show details")
+
+    def start(self):
+        self.button.setEnabled(False)
+        self.status.setText("Working… this can take a few minutes.")
+        self.details_toggle.setVisible(True)
+        self.log.clear()
+
+        self.proc = QProcess(self)
+        self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.proc.readyReadStandardOutput.connect(self.on_output)
+        self.proc.finished.connect(self.on_finished)
+        # --disable-internal-agent: if no graphical password dialog can be
+        # reached, fail cleanly instead of grasping for a terminal that a
+        # GUI process does not have (seen in the wild: "Error opening current
+        # controlling terminal ... /dev/tty"). We then explain it honestly.
+        self.proc.start(
+            "pkexec", ["--disable-internal-agent", "/usr/libexec/lnp-setup", self.action]
+        )
+
+    def on_output(self):
+        text = bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
+        for line in text.splitlines():
+            self.log.appendPlainText(line)
+            # The helper's ==> lines are written to be shown to people.
+            if line.startswith("==> "):
+                self.status.setText(line[4:])
+
+    def on_finished(self, code: int, _status):
+        log_text = self.log.toPlainText()
+
+        if code == 0:
+            self.status.setText("✓ " + self.done_text)
+            self.button.setVisible(False)
+        elif "authentication agent" in log_text or "controlling terminal" in log_text:
+            # polkit could not show a password dialog at all. Distinct from a
+            # wrong or missing password, and telling the user it was their
+            # password would be a lie.
+            self.status.setText(
+                "The screen that asks for the administrator password couldn't "
+                "be opened. Nothing was changed. Log out, log back in, and try "
+                "this again."
+            )
+            self.button.setEnabled(True)
+        elif code in (126, 127):
+            # pkexec: dialog dismissed / wrong password.
+            self.status.setText(
+                "That needs the administrator password, and it wasn't entered. "
+                "Nothing was changed — you can try again whenever you like."
+            )
+            self.button.setEnabled(True)
+        else:
+            self.status.setText(
+                "Something didn't finish, and nothing on your computer was changed. "
+                "Check the internet connection and try again. If it keeps happening, "
+                "the details below will help someone help you."
+            )
+            if not self.log.isVisible():
+                self.toggle_details()
+            self.button.setEnabled(True)
+
+
+class WelcomePage(QWizardPage):
+    def __init__(self, state: dict):
+        super().__init__()
+        self.setTitle("Welcome to your new desktop")
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(
+            body_label(
+                "Your desktop has been set up the LNP way:"
+                "<ul>"
+                "<li>A <b>dock</b> at the bottom — your apps, one click away. "
+                "Icons grow as you point at them.</li>"
+                "<li>A <b>menu bar</b> at the top with the clock and system icons.</li>"
+                "<li>Window buttons on the <b>left</b>, close first.</li>"
+                "</ul>"
+                "The next pages check that videos play and your hardware works. "
+                "Nothing happens without your say-so."
+            )
+        )
+
+        self.dock_toggle = QCheckBox("Show the dock")
+        self.dock_toggle.setChecked(state["dock_enabled"])
+        self.dock_toggle.toggled.connect(self.toggle_dock)
+        layout.addWidget(self.dock_toggle)
+
+        layout.addStretch(1)
+
+        if state["have_backup"]:
+            layout.addWidget(
+                body_label(
+                    "<b>Prefer things how they were?</b> Your previous desktop "
+                    "was saved before anything changed."
+                )
+            )
+            restore = QPushButton("Restore my old desktop…")
+            restore.clicked.connect(self.restore)
+            row = QHBoxLayout()
+            row.addWidget(restore)
+            row.addStretch(1)
+            layout.addLayout(row)
+
+    def toggle_dock(self, on: bool):
+        verb = "enable" if on else "disable"
+        _run(["systemctl", "--user", verb, "--now", "lnp-dock.service"])
+
+    def restore(self):
+        answer = QMessageBox.question(
+            self,
+            "Restore your old desktop?",
+            "This puts your desktop back exactly how it was before LNP. "
+            "The change finishes the next time you log in.\n\n"
+            "You can come back to the LNP desktop later from this app.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        result = _run(["lnp-apply-layout", "--revert"])
+        if result.returncode == 0:
+            box = QMessageBox(self)
+            box.setWindowTitle("Old desktop restored")
+            box.setText("Done. Log out and back in to see it.")
+            logout = box.addButton("Log out now", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is logout:
+                _run([
+                    "gdbus", "call", "--session",
+                    "--dest", "org.kde.Shutdown",
+                    "--object-path", "/Shutdown",
+                    "--method", "org.kde.Shutdown.logout",
+                ])
+        else:
+            QMessageBox.warning(
+                self,
+                "That didn't work",
+                "The saved copy of your old desktop couldn't be restored. "
+                "Nothing was changed.",
+            )
+
+
+class MediaPage(ActionPage):
+    def __init__(self, state: dict):
+        super().__init__(
+            action="codecs",
+            button_text="Set up media playback",
+            done_text="Done. Videos and music should now play everywhere.",
+        )
+        self.setTitle("Videos and music")
+
+        if state["codecs"]:
+            self.layout_.addWidget(
+                body_label("✓ <b>Already set up.</b> All common video and "
+                           "audio formats play on this computer.")
+            )
+            self.layout_.addStretch(1)
+        else:
+            self.layout_.addWidget(
+                body_label(
+                    "Some video and audio formats can't be included with Fedora "
+                    "for legal reasons, so parts of some websites and some films "
+                    "won't play yet.<br><br>"
+                    "One click fixes it. The formats come from <i>RPM Fusion</i>, "
+                    "the add-on source the Fedora community has used for years. "
+                    "You'll be asked for the administrator password."
+                )
+            )
+            self.finish_layout()
+
+
+class DriversPage(ActionPage):
+    def __init__(self, state: dict):
+        super().__init__(
+            action="nvidia",
+            button_text="Install the NVIDIA driver",
+            done_text="Done. Restart the computer in about five minutes "
+                      "to start using the driver.",
+        )
+        self.setTitle("Graphics hardware")
+
+        if not state["nvidia_gpu"]:
+            self.layout_.addWidget(
+                body_label("✓ <b>Nothing to do.</b> Your graphics hardware "
+                           "works with the drivers already included.")
+            )
+            self.layout_.addStretch(1)
+        elif state["nvidia_driver"]:
+            note = " and running" if state["nvidia_loaded"] else \
+                   " — it finishes setting up in the background"
+            self.layout_.addWidget(
+                body_label(f"✓ <b>Already set up.</b> This computer has an "
+                           f"NVIDIA graphics card and its driver is installed{note}.")
+            )
+            self.layout_.addStretch(1)
+        else:
+            self.layout_.addWidget(
+                body_label(
+                    "This computer has an NVIDIA graphics card. It works right "
+                    "now, but games and video editing run much better with "
+                    "NVIDIA's own driver.<br><br>"
+                    "You'll be asked for the administrator password, and the "
+                    "computer needs a restart afterwards."
+                )
+            )
+            self.finish_layout()
+
+
+class CleanPage(ActionPage):
+    def __init__(self, state: dict):
+        super().__init__(
+            action="clean",
+            button_text="Free up space",
+            done_text="Done. Nothing personal was touched.",
+        )
+        self.setTitle("Storage")
+        pct = state.get("disk_percent", 0)
+        mood = (
+            "That's getting full — worth cleaning now."
+            if pct >= 90
+            else "That's healthy. Cleaning is optional."
+        )
+        self.layout_.addWidget(
+            body_label(
+                f"The computer's storage is <b>{pct}% full</b>. {mood}<br><br>"
+                "Cleaning removes old system logs, downloaded update files "
+                "and unused app components. It never touches your documents, "
+                "photos or settings."
+            )
+        )
+        self.finish_layout()
+
+
+class SecurePage(ActionPage):
+    def __init__(self):
+        super().__init__(
+            action="secure",
+            button_text="Run security checkup",
+            done_text="Done. Security checkup finished.",
+        )
+        self.setTitle("Security")
+        self.layout_.addWidget(
+            body_label(
+                "A quick checkup that turns on protections which are safe to "
+                "have on for everyone: the firewall, firmware update checks, "
+                "encrypted name lookups, and better explanations when the "
+                "built-in security system blocks something.<br><br>"
+                "It changes nothing that could lock you out, and it reports "
+                "what it finds in plain words."
+            )
+        )
+        self.finish_layout()
+
+
+class TourPage(QWizardPage):
+    def __init__(self):
+        super().__init__()
+        self.setTitle("Three things worth knowing")
+        layout = QVBoxLayout(self)
+        layout.addWidget(
+            body_label(
+                "<ol>"
+                "<li><b>The dock does the obvious thing.</b> Click an app to "
+                "open it. Click again to tuck it away. Dots underneath mean "
+                "it's running.</li><br>"
+                "<li><b>Lost a window?</b> Its app shows in the dock — "
+                "click it. Windows are never hidden on another desktop.</li><br>"
+                "<li><b>Want to change something?</b> Everything lives in "
+                "<b>System Settings</b> — it's in the dock.</li>"
+                "</ol>"
+            )
+        )
+        layout.addStretch(1)
+
+
+class DonePage(QWizardPage):
+    def __init__(self):
+        super().__init__()
+        self.setTitle("You're all set")
+        layout = QVBoxLayout(self)
+        layout.addWidget(
+            body_label(
+                "Enjoy your computer.<br><br>"
+                "To see this again — including restoring your old desktop "
+                "— open the launcher and search for <b>Welcome</b>."
+            )
+        )
+        layout.addStretch(1)
+
+
+# ------------------------------------------------------------------- wiring
+
+
+def write_stamp():
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    STAMP.write_text("1\n")
+
+
+def main() -> int:
+    args = sys.argv[1:]
+
+    if "--dump-state" in args:
+        for key, value in system_state().items():
+            print(f"{key}={value}")
+        return 0
+
+    # From autostart, appear once: after the user has seen the wizard we stamp,
+    # and every later login exits here silently. The menu entry has no flag and
+    # always shows.
+    if "--autostart" in args and STAMP.exists():
+        return 0
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("lnp-welcome")
+    app.setDesktopFileName("lnp-welcome")
+
+    state = system_state()
+
+    wizard = QWizard()
+    wizard.setWindowTitle("Welcome")
+    wizard.setWizardStyle(QWizard.WizardStyle.ClassicStyle)
+    wizard.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
+    wizard.resize(720, 540)
+
+    wizard.addPage(WelcomePage(state))
+    wizard.addPage(MediaPage(state))
+    wizard.addPage(DriversPage(state))
+    wizard.addPage(CleanPage(state))
+    wizard.addPage(SecurePage())
+    wizard.addPage(TourPage())
+    wizard.addPage(DonePage())
+
+    wizard.show()
+    code = app.exec()
+
+    # Seen once is enough, however it was closed: a wizard that reappears
+    # every login because you closed it "wrong" is nagware.
+    write_stamp()
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

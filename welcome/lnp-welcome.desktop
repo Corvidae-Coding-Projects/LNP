@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome
+GenericName=Desktop Welcome
+Comment=Set up media playback and drivers, or restore your old desktop
+Exec=/usr/bin/lnp-welcome
+Icon=preferences-desktop
+Categories=System;Settings;
+Keywords=welcome;setup;codecs;drivers;restore;lnp;

@@ -1,0 +1,3 @@
+# Plain-language error notifications on for every user by default.
+# Opt out with: systemctl --user disable --now lnp-errord.service
+enable lnp-errord.service
