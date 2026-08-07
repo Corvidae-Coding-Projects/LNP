@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 
 Name:           lnp-dock
-Version:        0.5.1
+Version:        0.5.2
 Release:        1%{?dist}
 Summary:        Dock for Linux for Normal People
 
@@ -68,6 +68,16 @@ install -Dpm 0644 81-lnp-dock.preset %{buildroot}%{_userpresetdir}/81-lnp-dock.p
 %{_userpresetdir}/81-lnp-dock.preset
 
 %changelog
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.5.2-1
+- Cache rasterised glyphs. Every redraw previously re-rasterised every
+  glyph in the apps menu -- roughly 300 per frame, once per scroll event.
+  Measured redraw is now ~4 ms mean.
+- Scroll the apps menu at 3x the raw pointer delta. KWin passes libinput
+  pixel deltas through unscaled, about 3 px per event, so a 1150 px grid
+  took seconds of swiping and read as broken rather than slow.
+- Accept scroll from value120 and discrete as well as absolute, for wheel
+  mice that report only the high-resolution axis.
+
 * Thu Aug 06 2026 LNP Project <lnp@example.invalid> - 0.5.1-1
 - Fix leaked popup grabs that broke context menus in every other
   application. Opening a second dock menu created the new popup and took

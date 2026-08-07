@@ -649,6 +649,7 @@ impl Dock {
     }
 
     fn draw_apps_menu(&mut self) {
+        let started = std::time::Instant::now();
         let Some(am) = self.apps_menu.as_ref() else {
             return;
         };
@@ -822,6 +823,15 @@ impl Dock {
         am.popup.wl_surface().damage_buffer(0, 0, pw, ph);
         if buffer.attach_to(am.popup.wl_surface()).is_ok() {
             am.popup.wl_surface().commit();
+        }
+
+        if std::env::var_os("LNP_DOCK_DEBUG").is_some() {
+            // A scroll produces events at the pointer's report rate, so any
+            // per-frame cost above a few milliseconds turns into visible lag.
+            eprintln!(
+                "lnp-dock: apps menu draw took {:.1} ms",
+                started.elapsed().as_secs_f32() * 1000.0
+            );
         }
     }
 
@@ -1457,8 +1467,45 @@ impl PointerHandler for Dock {
                             }
                         }
                         PointerEventKind::Axis { vertical, .. } => {
+                            // Scroll arrives three different ways depending on
+                            // the device and the compositor:
+                            //
+                            //   absolute  pixels -- touchpads, and wheels on
+                            //             compositors that translate for us
+                            //   value120  high-resolution wheels, where 120
+                            //             is one logical notch
+                            //   discrete  the deprecated step count, older
+                            //             compositors only
+                            //
+                            // Reading `absolute` alone silently does nothing
+                            // on hardware that only reports one of the others,
+                            // which is a scroll that looks broken rather than
+                            // one that errors. Take whichever is populated.
+                            const NOTCH_PX: f32 = 60.0;
+                            let delta = if vertical.absolute != 0.0 {
+                                vertical.absolute as f32
+                            } else if vertical.value120 != 0 {
+                                vertical.value120 as f32 / 120.0 * NOTCH_PX
+                            } else {
+                                vertical.discrete as f32 * NOTCH_PX
+                            };
+
+                            if std::env::var_os("LNP_DOCK_DEBUG").is_some() {
+                                eprintln!(
+                                    "lnp-dock: axis abs={} v120={} disc={} -> delta={:.1} \
+                                     scroll={:.1} max={:.1} count={}",
+                                    vertical.absolute,
+                                    vertical.value120,
+                                    vertical.discrete,
+                                    delta,
+                                    am.model.scroll,
+                                    am.model.max_scroll(count),
+                                    count
+                                );
+                            }
+
                             let before = am.model.scroll;
-                            am.model.scroll_by(vertical.absolute as f32, count);
+                            am.model.scroll_by(delta * appsmenu::SCROLL_MULTIPLIER, count);
                             if am.model.scroll != before {
                                 act = Act::Redraw;
                             }

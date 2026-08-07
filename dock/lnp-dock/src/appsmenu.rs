@@ -17,6 +17,15 @@ pub const TILE_H: f32 = 92.0;
 pub const TILE_ICON: f32 = 44.0;
 pub const TILE_FONT: f32 = 12.5;
 
+/// Multiplier applied to raw pointer scroll deltas.
+///
+/// KWin passes libinput's per-event pixel deltas straight through, which
+/// measured about 3 px per event on this touchpad -- roughly 190 px per second
+/// of continuous swiping, against a grid that can be 1150 px tall. At 1:1 the
+/// menu scrolls, but so slowly it reads as broken rather than as slow. Every
+/// toolkit scales these; 3x makes one comfortable swipe cover about a page.
+pub const SCROLL_MULTIPLIER: f32 = 3.0;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Hover {
     None,

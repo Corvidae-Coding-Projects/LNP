@@ -5,11 +5,35 @@
 //! more; shaping engines can arrive when the dock grows labels in scripts that
 //! need them.
 
-use fontdue::Font;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use fontdue::{Font, Metrics};
 use tiny_skia::Pixmap;
+
+/// A rasterised glyph: its metrics and its coverage bitmap.
+type Glyph = Rc<(Metrics, Vec<u8>)>;
 
 pub struct TextRenderer {
     font: Font,
+    /// Rasterised glyphs, keyed by character and quantised size.
+    ///
+    /// Without this, every redraw re-rasterises every glyph: the apps menu
+    /// draws ~30 labels of ~10 characters, so a single scroll event cost
+    /// around 300 rasterisations, and a scroll produces those events at the
+    /// pointer's report rate. The menu scrolled correctly and felt broken.
+    ///
+    /// Glyphs are immutable once rasterised and the set is tiny (one entry
+    /// per character per size actually used), so this only ever grows to a
+    /// few hundred small buffers.
+    glyphs: RefCell<HashMap<(char, u32), Glyph>>,
+}
+
+/// Quantise a pixel size into a cache key, keeping quarter-pixel precision so
+/// HiDPI scaling still hits the cache instead of thrashing it.
+fn size_key(px: f32) -> u32 {
+    (px * 4.0).round().max(0.0) as u32
 }
 
 /// Where to look for a UI font, most preferred first. fc-match answers for the
@@ -40,7 +64,10 @@ impl TextRenderer {
         for path in font_candidates() {
             if let Ok(data) = std::fs::read(&path) {
                 if let Ok(font) = Font::from_bytes(data, fontdue::FontSettings::default()) {
-                    return Some(Self { font });
+                    return Some(Self {
+                        font,
+                        glyphs: RefCell::new(HashMap::new()),
+                    });
                 }
             }
         }
@@ -48,11 +75,23 @@ impl TextRenderer {
         None
     }
 
+    /// Rasterise a glyph, or return the copy we already have.
+    fn glyph(&self, ch: char, px: f32) -> Glyph {
+        let key = (ch, size_key(px));
+
+        if let Some(g) = self.glyphs.borrow().get(&key) {
+            return Rc::clone(g);
+        }
+
+        let (metrics, coverage) = self.font.rasterize(ch, px);
+        let glyph: Glyph = Rc::new((metrics, coverage));
+        self.glyphs.borrow_mut().insert(key, Rc::clone(&glyph));
+        glyph
+    }
+
     /// Width of `text` at `px` in pixels.
     pub fn measure(&self, text: &str, px: f32) -> f32 {
-        text.chars()
-            .map(|c| self.font.metrics(c, px).advance_width)
-            .sum()
+        text.chars().map(|c| self.glyph(c, px).0.advance_width).sum()
     }
 
     /// Draw `text` with its baseline at (`x`, `baseline_y`). Returns the
@@ -71,7 +110,8 @@ impl TextRenderer {
         let mut pen_x = x;
 
         for ch in text.chars() {
-            let (metrics, coverage) = self.font.rasterize(ch, px);
+            let glyph = self.glyph(ch, px);
+            let (metrics, coverage) = (&glyph.0, &glyph.1);
 
             let gx = (pen_x + metrics.xmin as f32).round() as i32;
             // fontdue's ymin is the bitmap's bottom relative to the baseline,
