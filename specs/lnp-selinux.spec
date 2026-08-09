@@ -2,7 +2,7 @@
 
 Name:           lnp-selinux
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        4%{?dist}
 Summary:        Security Alerts -- plain-language SELinux denials with one-click fixes
 
 License:        GPL-3.0-or-later
@@ -72,6 +72,15 @@ systemctl enable --now setroubleshootd.service >/dev/null 2>&1 || :
 %{_userpresetdir}/83-lnp-selinux.preset
 
 %changelog
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.1.0-4
+- Actually ship the watcher unit without ConditionEnvironment; the 0.1.0-3
+  build packaged a stale copy.
+
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.1.0-3
+- Drop ConditionEnvironment=WAYLAND_DISPLAY from the watcher: it needs the
+  session and system buses, not the compositor, and the condition silently
+  skipped the unit for the whole session after a reboot.
+
 * Thu Aug 06 2026 LNP Project <lnp@example.invalid> - 0.1.0-2
 - Force snake_case D-Bus member names: zbus PascalCases them and
   setroubleshootd allowlists each exact name, so every call was refused.

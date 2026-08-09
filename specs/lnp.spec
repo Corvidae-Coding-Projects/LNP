@@ -9,7 +9,7 @@
 
 Name:           lnp
 Version:        0.3.0
-Release:        4%{?dist}
+Release:        6%{?dist}
 Summary:        Linux for Normal People -- sane desktop defaults for Plasma
 
 License:        GPL-3.0-or-later
@@ -310,6 +310,21 @@ install -Dpm 0644 welcome/lnp-welcome-autostart.desktop %{buildroot}%{_sysconfdi
 
 
 %changelog
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.3.0-6
+- apply: drop ConditionEnvironment=XDG_CURRENT_DESKTOP too. Same silent
+  skip as the other units; the applier already detects a live plasmashell
+  and exits cleanly without one.
+
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.3.0-5
+- errord: stop reporting D-Bus activation wrappers as problems. Several are
+  designed to fail -- KDE ships stubs such as org.kde.klipper.desktop with
+  Exec=/usr/bin/false now the feature lives in plasmashell -- so "a
+  background helper had a problem" was a false alarm naming something
+  nobody could act on.
+- errord: drop ConditionEnvironment=WAYLAND_DISPLAY. It needs the session
+  bus, not the compositor, and the condition silently skipped the unit for
+  the whole session after a reboot.
+
 * Thu Aug 06 2026 LNP Project <lnp@example.invalid> - 0.3.0-4
 - apply: stop setting DisableWhileTyping. It deadens the touchpad for a
   moment after every keystroke, which makes selecting text in a terminal

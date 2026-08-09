@@ -1,19 +1,30 @@
 [Unit]
 Description=LNP Dock
-# A Wayland client is useless before the session's compositor socket exists.
+
+# Ordering after plasmashell is what guarantees a usable session: by the time
+# the shell is up, the compositor is running and Plasma has imported
+# WAYLAND_DISPLAY into the systemd user manager.
 PartOf=graphical-session.target
-After=graphical-session.target
-# Plasma imports WAYLAND_DISPLAY into the systemd user environment at session
-# start; if it is absent this is not a Wayland session and the dock cannot run.
-ConditionEnvironment=WAYLAND_DISPLAY
+After=graphical-session.target plasma-plasmashell.service
+
+# Deliberately NO ConditionEnvironment=WAYLAND_DISPLAY.
+#
+# A condition is evaluated once, when the unit is started. If the environment
+# import has not landed at that instant the unit is skipped -- and skipped is
+# not failed, so nothing retries and nothing is logged as wrong. After a
+# reboot every LNP user service silently did not start, reporting
+# "enabled" and "inactive" with ConditionResult=no. Ordering plus a retry
+# budget is honest where a condition is merely quiet.
+StartLimitIntervalSec=120
+StartLimitBurst=10
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/lnp-dock
-# The dock holds no state, so the recovery story for a crash is simply to be
-# there again before the user finishes wondering where it went.
+# The dock holds no state, so the recovery story for a crash -- or for
+# starting a moment too early -- is simply to be there again.
 Restart=on-failure
-RestartSec=1
+RestartSec=2
 
 [Install]
 WantedBy=plasma-workspace.target

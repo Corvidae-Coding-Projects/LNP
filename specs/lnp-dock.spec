@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 
 Name:           lnp-dock
-Version:        0.5.3
+Version:        0.5.4
 Release:        1%{?dist}
 Summary:        Dock for Linux for Normal People
 
@@ -68,6 +68,13 @@ install -Dpm 0644 81-lnp-dock.preset %{buildroot}%{_userpresetdir}/81-lnp-dock.p
 %{_userpresetdir}/81-lnp-dock.preset
 
 %changelog
+* Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.5.4-1
+- Start reliably after a reboot. ConditionEnvironment=WAYLAND_DISPLAY was
+  evaluated once, before Plasma had imported the variable into the systemd
+  user manager, so the unit was skipped -- and skipped is not failed, so
+  nothing retried and nothing was logged. Order after plasmashell and use a
+  retry budget instead.
+
 * Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.5.3-1
 - Release the popup grab when a menu loses keyboard focus. Holding it
   starved anything that needed exclusive input -- a screenshot tool's

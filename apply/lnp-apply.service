@@ -3,7 +3,15 @@ Description=Apply the LNP desktop layout
 # The applier drives plasma-apply-lookandfeel, so the shell has to be up first.
 After=plasma-plasmashell.service
 PartOf=graphical-session.target
-ConditionEnvironment=XDG_CURRENT_DESKTOP=KDE
+# No ConditionEnvironment=XDG_CURRENT_DESKTOP=KDE.
+#
+# A condition is evaluated once and, when it fails, the unit is *skipped* --
+# which is not a failure, so nothing retries and nothing is logged as wrong.
+# Plasma imports the session environment into the systemd user manager, and
+# if that has not landed when the unit is pulled in, the applier silently
+# never runs. The applier already checks for a live plasmashell itself and
+# exits cleanly when there is none, so the condition bought nothing and cost
+# a whole class of silent no-ops.
 
 [Service]
 Type=oneshot

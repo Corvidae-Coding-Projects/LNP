@@ -34,9 +34,22 @@ RATE_LIMIT = 300.0
 DISK_RATE_LIMIT = 6 * 3600.0
 DISK_CHECK_INTERVAL = 300.0
 
-# Units whose failure is routine churn, not a story. plasma bits restart
-# themselves; user@ noise would implicate the session itself.
-BORING_UNITS = re.compile(r"^(user@|app-|plasma-|drkonqi)")
+# Units whose failure is routine churn, not a story.
+#
+#   user@      would implicate the whole session
+#   app-       transient scopes for launched apps; if an app fails to start
+#              the person sees that directly, and the scope name is not
+#              something they could act on
+#   plasma-    desktop components that restart themselves
+#   dbus-:     D-Bus activation wrappers, named like
+#              "dbus-:1.2-org.kde.KSplash@4". Pure launch plumbing. Several
+#              of these are *designed* to fail: KDE ships stubs such as
+#              org.kde.klipper.desktop with Exec=/usr/bin/false so stale
+#              references resolve harmlessly now the feature lives inside
+#              plasmashell. Reporting those as problems is a false alarm,
+#              and a false alarm is worse than silence -- it teaches people
+#              to ignore the next one.
+BORING_UNITS = re.compile(r"^(user@|app-|plasma-|drkonqi|dbus-:)")
 
 
 # ---------------------------------------------------------------- translators

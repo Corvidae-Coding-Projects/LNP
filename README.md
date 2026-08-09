@@ -71,6 +71,17 @@ $ lnp-apply-layout --force     # re-apply even if the stamp says it is current
 $ lnp-apply-layout --revert    # restore the most recent backup
 ```
 
+## Product and safety design
+
+The authoritative design package is
+[`docs/product-design.md`](docs/product-design.md). It defines the product
+doctrine, authorization threat model and architecture, core-journey research
+matrix, accessibility audit, release gates, and delivery sequence.
+
+[`docs/consent-design.html`](docs/consent-design.html) is an earlier exploration
+kept as design history. Its proposed consent protocol is superseded by the
+security and accessibility requirements in the authoritative specification.
+
 ## Status
 
 Early. The data packages are the working part. Still to come: a magnifying
