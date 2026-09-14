@@ -21,6 +21,27 @@ own supported mechanisms, so there is no forked code to keep in sync.
 | `lnp-errord` | Journal watcher that translates SELinux denials, service crashes and OOM kills into plain-language notifications. |
 | `lnp-dock` | The dock: Rust, Wayland layer-shell, fixed-centre magnification, live window list. Own spec (arch-specific). |
 
+## Repository guide
+
+Each functional area has a local README with its responsibilities, important
+files, and focused validation commands.
+
+| Folder | Responsibility |
+| --- | --- |
+| [`apply/`](apply/) | Per-user layout application, backup, status, and revert behavior. |
+| [`defaults/`](defaults/) | System-wide KDE and Plasma defaults delivered through XDG configuration. |
+| [`dock/`](dock/) | The Rust Wayland dock and its desktop/session integration. |
+| [`docs/`](docs/) | Product, safety, and SELinux policy-generation design documents. |
+| [`errord/`](errord/) | Plain-language, unprivileged system-failure notifications. |
+| [`guard/`](guard/) | Pre-update Btrfs snapshots and reboot-safety checks. |
+| [`hdn-linux/`](hdn-linux/) | HDN Linux kernel-hardening release artifact, design, and verification material. |
+| [`lookandfeel/`](lookandfeel/) | The Plasma look-and-feel package and panel layout. |
+| [`recovery/`](recovery/) | Snapshot restoration and console recovery when graphics cannot start. |
+| [`selinux/`](selinux/) | Plain-language SELinux alert UI and narrowly scoped privileged helpers. |
+| [`specs/`](specs/) | Fedora RPM packaging definitions. |
+| [`tests/`](tests/) | Mocked cross-component regression and security-boundary tests. |
+| [`welcome/`](welcome/) | First-run GUI and its polkit-authorized setup helper. |
+
 ## The layout
 
 A slim menu bar across the top (global application menu on the left, status
@@ -91,6 +112,20 @@ matrix, accessibility audit, release gates, and delivery sequence.
 [`docs/consent-design.html`](docs/consent-design.html) is an earlier exploration
 kept as design history. Its proposed consent protocol is superseded by the
 security and accessibility requirements in the authoritative specification.
+
+## HDN Linux
+
+[`hdn-linux/`](hdn-linux/) is the kernel-hardening subproject distributed with
+this repository. It currently publishes a patch against upstream Linux
+`7.0.12`, the architecture and functional-equivalence documents behind that
+patch, release QA evidence, and a deterministic verification script. It is a
+source-derived release artifact rather than another package in the LNP desktop
+RPM set.
+
+Start with the [HDN Linux README](hdn-linux/README.md). Changes to the kernel
+implementation belong in the named kernel source repository described by
+[`hdn-linux/docs/SOURCE_CONTROL.md`](hdn-linux/docs/SOURCE_CONTROL.md); the
+published patch is regenerated and verified from those authoritative inputs.
 
 ## Status
 
