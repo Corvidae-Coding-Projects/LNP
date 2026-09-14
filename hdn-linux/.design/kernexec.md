@@ -1,6 +1,6 @@
-# Feature: KERNEXEC-Style Kernel Execute and Write Isolation
+# Kernel execute and write isolation
 
-## Summary
+## Goal
 Define an HDN-native execute-integrity layer that removes writable aliases of kernel executable state and constrains the few transitions that legitimately create or modify executable mappings. The design uses upstream W^X primitives first and adds narrowly scoped x86-64 enforcement where Linux 7.0.12 still exposes mutable GDT, page-table, direct-map, module, or JIT aliases.
 
 ## Requirements
@@ -11,7 +11,7 @@ Define an HDN-native execute-integrity layer that removes writable aliases of ke
 - REQ-5: Integrate policy and status through `security/hardening/Kconfig`, `security/hardening/core.c`, and the existing HDN policy ABI without adding an end-user compatibility control.
 - REQ-6: Demonstrate that enforcement adds no measurable steady-state cost outside legitimate mapping transitions and fails closed when a transition violates W^X.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: An LKDTM or HDN selftest proves that attempts to create simultaneous writable and executable aliases are rejected, while `/sys/kernel/debug/kernel_page_tables` shows no unexpected W+X kernel mappings after boot.
 - [ ] AC-2 [REQ-2]: GDT mutation tests pass across secondary CPU online/offline, suspend/resume, and a QEMU reboot, and an instrumented unauthorized post-finalization write faults or is rejected.
 - [ ] AC-3 [REQ-3]: All page-table write sites found by a repository-wide static checker use the approved mutation API, and negative tests cannot write a sealed page-table page through the direct map.
@@ -19,7 +19,7 @@ Define an HDN-native execute-integrity layer that removes writable aliases of ke
 - [ ] AC-5 [REQ-5]: `hdn-status` reports active, degraded, or unsupported KERNEXEC subfeatures from machine-readable kernel state, and signed policy cannot relax the invariant after runtime sealing.
 - [ ] AC-6 [REQ-6]: Kernel build, hackbench, kernel compilation, module load, and BPF JIT benchmarks show no statistically significant steady-state regression; transition microbenchmarks and all denials are recorded in the verification report.
 
-## Architecture
+## Technical plan
 The authority remains the clean tagged source at `../hdn-kernel`. Configuration is added beside the existing HDN switches in `../hdn-kernel/security/hardening/Kconfig`, while orchestration and status live in `../hdn-kernel/security/hardening/core.c`. The implementation must reuse `../hdn-kernel/arch/x86/mm/pat/set_memory.c`, `../hdn-kernel/mm/execmem.c`, and `../hdn-kernel/kernel/module/strict_rwx.c` instead of creating a second executable-memory subsystem.
 
 The core abstraction is a typed construction token: callers acquire a token for one enumerated transition, mutate the exact range, perform architecture-required cache and TLB synchronization, and irreversibly finalize the range. Tokens are not integers exposed to modules. The implementation records the range, transition reason, owner, and state in an internal table protected by a raw lock suitable for early boot. Unexpected overlap, re-finalization, or writable-plus-executable alias detection terminates the transition and emits a bounded HDN event.
@@ -30,11 +30,11 @@ Dynamic text users receive explicit adapters. Alternatives and static calls fini
 
 Verification belongs in `../hdn-kernel/tools/testing/selftests/hardening/`, with destructive fault probes isolated to test-only modules. The matrix in `verification/configs/` builds both enforcement-on and dependency-negative configurations, while TCG covers correctness and host KVM covers timing-sensitive SMP, hotplug, and suspend cases.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select Linux 7.0.12, x86-64 first, no user-visible relaxation, and measured profile promotion.
+No open questions. The current plan starts with Linux 7.0.12 on x86-64, adds no user-facing bypass, and requires measurement before wider use.
 
-## Out of Scope
+## Not included
 - Replacing upstream x86 page-table APIs wholesale.
 - Supporting architectures other than x86-64 in the first implementation.
 - Treating confidentiality of kernel virtual addresses as the primary security boundary.

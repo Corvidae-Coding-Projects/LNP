@@ -1,6 +1,6 @@
-# Feature: Profile-Scoped Sysfs Discovery Reduction
+# Profile-scoped sysfs hiding
 
-## Summary
+## Goal
 Reduce unnecessary hardware and kernel-topology disclosure through sysfs for constrained applications while preserving the device discovery required by the desktop, udev, system services, and accessibility software. Visibility is derived from signed HDN profiles and namespace context, not a brittle system-wide hide switch.
 
 ## Requirements
@@ -12,7 +12,7 @@ Reduce unnecessary hardware and kernel-topology disclosure through sysfs for con
 - REQ-6: Provide stable brokered answers for approved application needs instead of granting broad raw sysfs visibility.
 - REQ-7: Test information reduction, bypass resistance, desktop compatibility, hotplug, suspend/resume, and performance of sysfs-heavy workloads.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: The inventory identifies each selected node family, exposed information, writers/readers, profile decision, broker alternative, and residual side channel.
 - [ ] AC-2 [REQ-2]: Negative tests cannot discover a hidden node by directory enumeration, direct path lookup, symlink, bind mount, alternate class/device path, or descriptor transfer across a restricted boundary.
 - [ ] AC-3 [REQ-3]: A signed restricted profile sees its declared view; unprofiled trusted services retain the base view; executable replacement and namespace transition invalidate stale decisions.
@@ -21,7 +21,7 @@ Reduce unnecessary hardware and kernel-topology disclosure through sysfs for con
 - [ ] AC-6 [REQ-6]: Broker tests return only the declared stable fields, authenticate the caller, redact unneeded topology, and remain correct through device add/remove.
 - [ ] AC-7 [REQ-7]: Repeated sysfs traversal and desktop startup benchmarks stay within the accepted profile budget, and the bypass corpus has zero unexplained disclosures.
 
-## Architecture
+## Technical plan
 Policy decisions originate in `../hdn-kernel/security/hardening/core.c` and use the existing executable-identity and sealed-profile model. Enforcement hooks are placed at the kernfs/sysfs boundary under `../hdn-kernel/fs/kernfs/` and `../hdn-kernel/fs/sysfs/` so enumeration and direct lookup share one decision rather than diverging per subsystem.
 
 Each profile references a versioned visibility class, not arbitrary pathname globbing. Kernel registration associates kernfs node types with stable disclosure categories. At lookup and enumeration, the hook evaluates the current authenticated subject, namespace, node category, and operation. Decisions are cached only with policy generation and namespace identity, preventing stale visibility after profile replacement.
@@ -30,11 +30,11 @@ Base-system daemons retain their necessary view under narrow service identities.
 
 Tests combine kernel fixtures under `../hdn-kernel/tools/testing/selftests/hardening/` with the live application and service suites in `../hdn-os/tests/`. Full-system validation includes hotplug and suspend because device recreation can otherwise bypass cached categorization.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select profile-scoped visibility and preserve the trusted desktop/service base.
+No open questions. The current plan controls visibility by profile while keeping trusted desktop apps and services working.
 
-## Out of Scope
+## Not included
 - Claiming sysfs hiding protects against root or arbitrary kernel read primitives.
 - System-wide removal of sysfs required by the operating system.
 - Path-glob policy supplied directly by applications.

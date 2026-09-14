@@ -1,6 +1,6 @@
-# Feature: Systematic Reference-Count Hardening
+# Systematic reference-count hardening
 
-## Summary
+## Goal
 Move lifetime-controlling counters onto Linux's saturating `refcount_t` semantics and continuously detect regressions back to unchecked atomics. The design prioritizes semantic conversion and proof of ownership behavior over a blanket textual replacement.
 
 ## Requirements
@@ -11,7 +11,7 @@ Move lifetime-controlling counters onto Linux's saturating `refcount_t` semantic
 - REQ-5: Add Coccinelle and static-analysis gates that detect newly introduced atomic-as-refcounter patterns and suspicious unchecked return values.
 - REQ-6: Validate high-risk conversions with concurrency stress, KCSAN, fault injection, and subsystem selftests before enabling any stricter runtime response.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: A generated inventory names every candidate field, definition path, mutation sites, release site, user reachability, and disposition, with no unreviewed high-risk candidate remaining.
 - [ ] AC-2 [REQ-2]: Converted objects pass their subsystem tests and retain the intended acquire/release ordering under architecture litmus tests and code review.
 - [ ] AC-3 [REQ-3]: Underflow, overflow, increment-from-zero, and saturation test cases produce the documented safe behavior and never free a saturated live object.
@@ -19,7 +19,7 @@ Move lifetime-controlling counters onto Linux's saturating `refcount_t` semantic
 - [ ] AC-5 [REQ-5]: `scripts/coccinelle/api/atomic_as_refcounter.cocci` plus HDN-specific rules run in CI and reject a seeded atomic lifetime counter and ignored checked-acquire result.
 - [ ] AC-6 [REQ-6]: KCSAN, refcount fault injection, syzkaller lifetime programs, and converted-subsystem suites complete without new races, leaks, premature frees, or warnings.
 
-## Architecture
+## Technical plan
 The implementation builds on `../hdn-kernel/include/linux/refcount.h` and `../hdn-kernel/lib/refcount.c`; it does not create a competing HDN counter type. The existing semantic patch at `../hdn-kernel/scripts/coccinelle/api/atomic_as_refcounter.cocci` becomes the seed for a versioned inventory and prevention gate stored with the verification tooling.
 
 Conversion is deliberately subsystem-by-subsystem. Each candidate record states whether the count owns lifetime, whether zero is terminal, whether increments may race with final release, and which memory-order guarantee consumers require. Only pure lifetime counters are mechanically converted. Mixed counters require a prior structural split into ownership and accounting fields.
@@ -28,11 +28,11 @@ Runtime response uses upstream saturation semantics. HDN policy may choose bound
 
 The verification environment adds targeted Coccinelle runs, KCSAN profiles, and syzkaller descriptions for converted high-risk entry points. Results are tied to the exact source commit and stored outside Git as test artifacts, with concise summaries under the release manifest.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults require semantic, staged conversion and retain upstream saturation as the invariant.
+No open questions. The current plan converts counters in reviewed stages and keeps upstream saturation behavior.
 
-## Out of Scope
+## Not included
 - Converting counters that measure statistics, quotas, sequence numbers, or resource availability.
 - Introducing a new compiler language extension for reference counts.
 - Treating all `atomic_t` uses as bugs.

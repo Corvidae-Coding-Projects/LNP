@@ -1,90 +1,93 @@
 # Linux for Normal People (LNP)
 
-An opinionated desktop configuration for Fedora KDE Plasma. The north star is
-that someone who has never used Linux should be able to sit down at it and not
-need a forum post.
+LNP is a Fedora KDE Plasma desktop for people who do not want to become Linux
+experts just to use their computer.
+
+## The goal
+
+The end goal is an easy-to-use, secure Linux desktop backed up by software
+agents. Those agents should help maintain the system, test updates, explain
+problems, and guide recovery. They must follow the same safety rules as the
+rest of LNP: no hidden changes, no automatic administrator access, and no
+pretending that a failed task succeeded.
 
 ## What it is
 
-LNP is mostly **data, not code**. Plasma already supports everything needed to
-reshape the desktop; it just ships defaults aimed at people who enjoy
-configuring things. LNP supplies a different set of defaults through Plasma's
-own supported mechanisms, so there is no forked code to keep in sync.
+Much of LNP is configuration rather than replacement desktop code. It uses
+Plasma's supported settings and package formats, then adds small tools where
+configuration alone is not enough.
 
 | Package | Contents |
 | --- | --- |
-| `lnp-desktop` | Metapackage. This is the one to install. |
-| `lnp-look-and-feel` | Plasma look-and-feel package `org.lnp.desktop`: the panel layout, theme, colours, cursors. |
-| `lnp-defaults` | System-wide defaults in `/etc/xdg` for KWin (including window button order), Dolphin, fonts and the screen locker. |
-| `lnp-apply` | The applier and its systemd user service. |
-| `lnp-welcome` | First-run wizard: one-click codecs and drivers via polkit, dock toggle, GUI restore of the old desktop, short tour. |
-| `lnp-errord` | Journal watcher that translates SELinux denials, service crashes and OOM kills into plain-language notifications. |
-| `lnp-dock` | The dock: Rust, Wayland layer-shell, fixed-centre magnification, live window list. Own spec (arch-specific). |
+| `lnp-desktop` | Main package. Install this to get the full LNP desktop. |
+| `lnp-look-and-feel` | Panel layout, theme, colours, and cursors. |
+| `lnp-defaults` | Default settings for KWin, Dolphin, fonts, and the screen locker. |
+| `lnp-apply` | Applies the layout, backs up the old one, and can restore it. |
+| `lnp-welcome` | First-run setup for media support, drivers, the dock, and restoring the previous desktop. |
+| `lnp-errord` | Turns selected system errors into useful desktop messages. |
+| `lnp-guard` | Takes a Btrfs snapshot before updates and checks whether it is safe to restart. |
+| `lnp-recovery` | Offers a simple recovery screen if the graphical login fails. |
+| `lnp-dock` | Native Wayland dock with magnification, pinned apps, and a live window list. |
+| `lnp-selinux` | Explains SELinux alerts and offers a small set of reviewed fixes. |
 
 ## Repository guide
 
-Each functional area has a local README with its responsibilities, important
-files, and focused validation commands.
+Each folder has a short README that explains what it is for and how to check
+changes made there.
 
 | Folder | Responsibility |
 | --- | --- |
-| [`apply/`](apply/) | Per-user layout application, backup, status, and revert behavior. |
-| [`defaults/`](defaults/) | System-wide KDE and Plasma defaults delivered through XDG configuration. |
-| [`dock/`](dock/) | The Rust Wayland dock and its desktop/session integration. |
-| [`docs/`](docs/) | Product, safety, and SELinux policy-generation design documents. |
-| [`errord/`](errord/) | Plain-language, unprivileged system-failure notifications. |
-| [`guard/`](guard/) | Pre-update Btrfs snapshots and reboot-safety checks. |
-| [`hdn-linux/`](hdn-linux/) | HDN Linux kernel-hardening release artifact, design, and verification material. |
-| [`lookandfeel/`](lookandfeel/) | The Plasma look-and-feel package and panel layout. |
-| [`recovery/`](recovery/) | Snapshot restoration and console recovery when graphics cannot start. |
-| [`selinux/`](selinux/) | Plain-language SELinux alert UI and narrowly scoped privileged helpers. |
-| [`specs/`](specs/) | Fedora RPM packaging definitions. |
-| [`tests/`](tests/) | Mocked cross-component regression and security-boundary tests. |
-| [`welcome/`](welcome/) | First-run GUI and its polkit-authorized setup helper. |
+| [`apply/`](apply/) | Applies, backs up, checks, and restores the desktop layout. |
+| [`defaults/`](defaults/) | Default KDE and Plasma settings. |
+| [`dock/`](dock/) | Dock code and session setup. |
+| [`docs/`](docs/) | Product, safety, and security design notes. |
+| [`errord/`](errord/) | Desktop messages for selected system failures. |
+| [`guard/`](guard/) | Safe-update snapshots and restart checks. |
+| [`hdn-linux/`](hdn-linux/) | HDN kernel-hardening patch, design notes, and test records. |
+| [`lookandfeel/`](lookandfeel/) | Plasma theme and panel layout. |
+| [`recovery/`](recovery/) | Snapshot restore tool and text-mode recovery screen. |
+| [`selinux/`](selinux/) | SELinux alert app and carefully limited repair tools. |
+| [`specs/`](specs/) | Fedora RPM package files. |
+| [`tests/`](tests/) | Tests that cover more than one part of LNP. |
+| [`welcome/`](welcome/) | First-run app and its administrator helper. |
 
 ## The layout
 
-A slim menu bar across the top (global application menu on the left, status
-items and clock on the right) and a floating, centred icon dock at the bottom
-that steps out of the way of windows rather than sitting permanently on top.
-Window controls sit on the left, macOS-style.
+LNP uses a slim menu bar at the top and a centred icon dock at the bottom. The
+dock moves out of the way of windows instead of always covering part of the
+screen. Window controls appear on the left.
 
 Everything is built from stock Plasma applets: `appmenu`, `panelspacer`,
 `systemtray`, `digitalclock`, `kickoff`, `icontasks`, `trash`.
 
 ## How defaults are delivered
 
-Two mechanisms, both native to Plasma:
+LNP uses two standard Plasma features:
 
-1. **`/etc/xdg/*rc`** sits *below* `~/.config/*rc` in the `XDG_CONFIG_DIRS`
-   cascade. Values apply to users who have not touched that setting, and are
-   silently overridden the moment they do. Nothing is enforced.
+1. Files in **`/etc/xdg`** provide starting values. A person's own settings in
+   `~/.config` take priority, so LNP does not lock these choices.
 
-2. **The look-and-feel package** owns theme, colour scheme, icons, cursors and
-   the panel layout, so there is exactly one owner for those.
+2. The **look-and-feel package** provides the theme, colours, icons, cursors,
+   and panel layout.
 
-   One caveat, found by testing rather than documentation:
-   `plasma-apply-lookandfeel` **ignores the `[kwinrc]` sections** of a
-   look-and-feel `defaults` file. Applying `org.lnp.desktop` rewrote the colour
-   blocks in `kdeglobals` but left `kwinrc` untouched. Anything KWin-related --
-   window button order included -- therefore has to go through `/etc/xdg`.
+Testing found that `plasma-apply-lookandfeel` ignores `[kwinrc]` sections in a
+look-and-feel defaults file. KWin settings, including window button order,
+therefore come from `/etc/xdg`.
 
-Touchpad settings are the exception: Plasma keys them per physical device
-under `[Libinput][vendor][product][name]`, so no static file can express them.
-The applier enumerates the machine's actual touchpads instead.
+Touchpad settings are tied to each physical device. The layout tool finds the
+computer's touchpads and writes the right settings for them.
 
 ## Applying and reverting
 
-Installing `lnp-apply` enables a systemd **user** service. It runs at the next
-Plasma login, compares the shipped layout version against a per-user stamp,
-and applies the layout once. It is a no-op on every subsequent login.
+Installing `lnp-apply` enables a service for each user. At the next Plasma
+login, it checks the layout version and applies a new layout once. Later logins
+do nothing unless the shipped layout changes.
 
-This runs as the user rather than from RPM `%post` on purpose: Plasma's
-per-user configuration cannot be safely rewritten by root while a session is
-live.
+It runs as the signed-in user because changing live Plasma settings as root is
+unsafe.
 
-**Applying rebuilds the Plasma panel layout.** The previous configuration is
-always backed up first, to `~/.local/state/lnp/backup-<timestamp>/`.
+Applying LNP rebuilds the Plasma panel layout. It first saves the old settings
+under `~/.local/state/lnp/backup-<timestamp>/`.
 
 ```console
 $ lnp-apply-layout --status    # what is shipped, what is applied, what backups exist
@@ -92,44 +95,39 @@ $ lnp-apply-layout --force     # re-apply even if the stamp says it is current
 $ lnp-apply-layout --revert    # restore the most recent backup
 ```
 
-Restoring pauses automatic layout application, including at later logins and
-layout updates. Use `--force`, or “Apply the LNP desktop layout” in Welcome,
-to apply LNP again and resume automatic application.
+Restoring also pauses automatic layout changes. Use `--force`, or choose
+“Apply the LNP desktop layout” in Welcome, to turn them back on.
 
-New backups record both saved files and files that were absent, so reverting
-also removes configuration files created by the applier. Older backups lack
-that record: their saved files can be restored, but files with no saved copy
-are left in place. Failed backups stop application and never replace the latest
-completed backup.
+New backups remember which files did not exist before LNP, so a restore can
+remove files that LNP created. Older backups only restore saved files. If a
+backup fails, LNP stops before applying the layout and keeps the last good
+backup.
 
 ## Product and safety design
 
-The authoritative design package is
-[`docs/product-design.md`](docs/product-design.md). It defines the product
-doctrine, authorization threat model and architecture, core-journey research
-matrix, accessibility audit, release gates, and delivery sequence.
+[`docs/product-design.md`](docs/product-design.md) contains the current product
+and safety plan. It covers security, accessibility, user testing, architecture,
+and release checks.
 
-[`docs/consent-design.html`](docs/consent-design.html) is an earlier exploration
-kept as design history. Its proposed consent protocol is superseded by the
-security and accessibility requirements in the authoritative specification.
+[`docs/consent-design.html`](docs/consent-design.html) is an older idea kept for
+reference. If it disagrees with `product-design.md`, use `product-design.md`.
 
 ## HDN Linux
 
-[`hdn-linux/`](hdn-linux/) is the kernel-hardening subproject distributed with
-this repository. It currently publishes a patch against upstream Linux
-`7.0.12`, the architecture and functional-equivalence documents behind that
-patch, release QA evidence, and a deterministic verification script. It is a
-source-derived release artifact rather than another package in the LNP desktop
-RPM set.
+[`hdn-linux/`](hdn-linux/) is LNP's kernel-security project. This repository
+includes a patch for upstream Linux `7.0.12`, the design behind it, a comparison
+with other hardening work, test results, and a script that checks the published
+patch. HDN Linux is not currently one of the LNP desktop RPM packages.
 
-Start with the [HDN Linux README](hdn-linux/README.md). Changes to the kernel
-implementation belong in the named kernel source repository described by
-[`hdn-linux/docs/SOURCE_CONTROL.md`](hdn-linux/docs/SOURCE_CONTROL.md); the
-published patch is regenerated and verified from those authoritative inputs.
+Start with the [HDN Linux README](hdn-linux/README.md). The actual kernel source
+and release process are explained in
+[`hdn-linux/docs/SOURCE_CONTROL.md`](hdn-linux/docs/SOURCE_CONTROL.md). The patch
+in this repository is generated and checked from that source.
 
 ## Status
 
-Early. The data packages are the working part. Still to come: a magnifying
-dock plasmoid (Plasma has no dock magnification and Latte Dock is dead), a
-first-run welcome wizard, one-click codec and driver setup, and a
-human-readable error translator.
+LNP is under active development. The repository includes working versions of
+the layout, dock, welcome app, error messages, update guard, recovery tools,
+and SELinux alert app. It is not ready to promise as a finished desktop until
+the release, accessibility, security, and full-system tests in the product plan
+have passed.

@@ -1,26 +1,31 @@
-# Name Pending: Linux Kernel Hardening Design
+# HDN Linux kernel hardening design
 
 ## Purpose
 
-This document describes a cleaner architecture for a Linux kernel hardening suite with grsec-class security outcomes but original structure, names, code, and policy model.
+This document is the technical plan for HDN Linux. It aims for strong kernel
+security while keeping its own code, names, settings, and policy format.
 
-The goal is not to create a source-compatible replacement for grsecurity, PaX, gradm, RAP, or any related tooling. The goal is to build a hardened Linux platform where the kernel enforces strong invariants, the distro owns the policy layer, and normal users experience security as part of the OS rather than as a thing they configure.
+HDN is not a source-compatible replacement for grsecurity, PaX, gradm, RAP, or
+their tools. The kernel enforces the core safety rules. The operating system
+provides policy and normal graphical administration, so everyday users do not
+have to configure kernel security.
 
-The working design principle is:
+The main design rule is:
 
-> Touch core kernel paths only to install stable hardening contract points. Keep product policy, desktop behavior, authorization prompts, and learning/audit logic outside those paths.
+> Keep changes to core kernel paths small and stable. Put product policy,
+> desktop behavior, approval screens, learning, and most logging outside them.
 
-## Product Goals
+## Product goals
 
-- Daily-driver OS behavior for normal people.
-- Secure-by-default kernel and userland without requiring terminal use.
-- No routine driver, privilege, or policy fiddling by end users.
+- Work as an everyday desktop for people without Linux training.
+- Start with secure kernel and system settings without requiring a terminal.
+- Do not make users routinely manage drivers, permissions, or security policy.
 - Admin actions use normal graphical prompts.
 - Security policy is expressed in OS concepts: apps, drivers, accounts, developer mode, recovery, system updates.
 - Kernel hardening is quietly present and visible only when it blocks something important.
 - Advanced users can inspect and override policy, but overrides are explicit, logged, reversible, and time-scoped where possible.
 
-## Security Goals
+## Security goals
 
 - Reduce local privilege escalation reliability.
 - Reduce kernel exploit reliability.
@@ -32,7 +37,7 @@ The working design principle is:
 - Make policy changes transactional and auditable.
 - Preserve reliable recovery from bad policy without dropping normal users into a raw shell.
 
-## Non-Goals
+## Not goals
 
 - Source compatibility with gradm policies.
 - Public compatibility with grsecurity, PaX, RAP, or related naming.
@@ -41,7 +46,7 @@ The working design principle is:
 - An app store or packaging model in this document. This design only defines the kernel hardening and policy enforcement architecture that such systems would consume.
 - Perfect defense against compromised firmware, malicious hardware, full physical access without disk protection, or a hostile kernel build environment.
 
-## Threat Model
+## Threat model
 
 The design assumes attackers may control:
 

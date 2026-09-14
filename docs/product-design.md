@@ -1,101 +1,91 @@
 # Linux for Normal People: Product and Safety Design Specification
 
-Implementation amendment (2026-09-13):
-[Custom SELinux policy generation](selinux-policy-generation.md) supersedes
-this document's instructions to remove that feature. It is retained with
-verified alert scope, explicit confirmation, and administrator authentication.
+Update from 2026-09-13: [Custom SELinux policy generation](selinux-policy-generation.md)
+replaces this document's earlier instruction to remove that feature. The
+feature remains, but it must check the selected alert, ask for confirmation,
+and require administrator authentication.
 
 | Field | Value |
 | --- | --- |
-| Status | Proposed product contract; implementation is not yet conformant |
+| Status | Product plan; the current implementation does not meet every requirement yet |
 | Version | 1.0 |
 | Date | 2026-08-08 |
 | Audience | LNP maintainers, KDE/polkit reviewers, security reviewers, packagers, researchers, and testers |
-| Scope | Product doctrine, end-to-end experience, authorization threat model v2, usability research plan, core journey matrix, accessibility audit, release gates, and delivery sequence |
-| Replaces | The architectural conclusions in `docs/consent-design.html`; that document remains useful as design history only |
+| Scope | Product goals, full user experience, security model, user research, accessibility, release checks, and delivery order |
+| Replaces | The final conclusions in `docs/consent-design.html`; that file is an older design kept for reference |
 
 ## Document map
 
-- **Part I — Product doctrine:** north star, people, jobs, principles, platform
-  lessons, experience architecture, content, measures, and release gates.
-- **Part II — Authorization and security architecture v2:** threat model,
-  invariants, operation risk ladder, present-safe polkit path, future trusted
-  intent design, prompt behavior, accessibility/security boundary, and tests.
-- **Part III — Core-journey research and test matrix:** recruitment, ethics,
-  fixtures, facilitator protocol, scoring, 22 end-to-end journeys, fault
-  injection, analysis, and reporting.
-- **Part IV — Accessibility audit and conformance plan:** baseline, current-code
-  findings, requirements by modality, audit procedure, and stable-release gate.
-- **Part V — Delivery plan and traceability:** phased work, current repository
-  evidence, required decision records, definition of complete, and sources.
+- **Part I, product rules:** who LNP is for, what it should help them do, and
+  what must be true before release.
+- **Part II, security:** what needs approval, how approval works today, and how
+  those boundaries are tested.
+- **Part III, user testing:** who to test with, what tasks to test, how to score
+  results, and how to report failures.
+- **Part IV, accessibility:** known problems, required support, audit steps, and
+  release checks.
+- **Part V, delivery:** work order, current evidence, decision records, and the
+  definition of done.
 
-## Executive decision
+## Short version
 
-LNP is not a prettier Fedora spin and it is not a Linux tutorial. It is a
-consumer desktop whose implementation happens to use Fedora and KDE Plasma.
-Its north star is:
+LNP is a desktop for everyday use, built with Fedora and KDE Plasma. It is not
+a Linux course or only a new theme. Its main goal is:
 
 > LNP lets a person with no Linux-specific knowledge accomplish everyday
 > work, maintenance, troubleshooting, and recovery safely and confidently,
 > without needing a terminal or understanding how the operating system is
 > assembled.
 
-The terminal is a canary, not the literal boundary of failure. A graphical
-dialog that asks someone to understand SELinux types, repositories, package
-formats, services, or kernel modules has failed just as thoroughly. Conversely,
-a command prompt deliberately offered to a remote helper in an explicitly
-labelled support path does not make the ordinary experience a failure.
+Avoiding the terminal is not enough. A window that expects someone to
+understand SELinux types, software repositories, package formats, services, or
+kernel modules has also failed. A command prompt is acceptable only in a
+clearly marked expert support path.
 
-“Normal people” is brand shorthand for people who should not need a professional
-relationship with their operating system. It never means one kind of body,
-mind, literacy, language, age, or ability. If the product works only for a
-sighted, dexterous, confident mouse user, it has contradicted its own name.
+“Normal people” means people who should not need professional Linux skills to
+use their computer. It includes people with different bodies, abilities,
+languages, ages, and levels of technical experience. The product must not work
+only for confident mouse users with good eyesight and dexterity.
 
-This specification makes four decisions:
+The plan sets four rules:
 
-1. **Design around human jobs, not Linux components.** The primary navigation,
-   wording, status, and recovery paths describe what a person is trying to do.
-2. **Make safety architectural.** Prefer bounded operations, safe defaults,
-   automatic prevention, snapshots, undo, and least privilege over warnings.
-3. **Do not pretend that a click is authentication.** LNP will use today's
-   polkit honestly while pursuing an upstream, trusted *intent authorization*
-   path for the narrow class of changes where a protected human gesture is
-   sufficient.
-4. **Treat accessibility and research as release requirements.** A feature is
-   not complete when it only works with a mouse, at default scale, for its
-   author. Every critical journey must pass automated inspection, expert
-   assistive-technology testing, and repeated tests with representative people.
+1. **Describe tasks, not Linux parts.** Menus, messages, status, and recovery
+   should match what a person is trying to do.
+2. **Build safety into the system.** Use limited actions, safe defaults,
+   snapshots, undo, and the least access needed. Warnings are not enough.
+3. **A click is not proof of identity.** Use polkit honestly for administrator
+   approval. A protected click may be enough only for a small, well-defined
+   group of reversible actions.
+4. **Accessibility and user testing are release requirements.** A feature is
+   not finished if it works only with a mouse at the default display scale.
 
-The practical consequence for the present repository is immediate: do not
-implement the legacy `auth_consent` sketch as written. First split broad root
-helpers into typed, independently authorized operations; remove retained
-authorization; remove the one-click custom SELinux-module path; make the dock
-operable and exposed through AT-SPI; and put `lnp-selinux` in the default
-installation. Only then prototype trusted intent authorization upstream.
+Do not build the old `auth_consent` idea as written. First split broad
+administrator helpers into small named actions, avoid saved approval, make the
+dock work with assistive technology, and include `lnp-selinux` in the normal
+installation. Custom SELinux policy creation may remain only under the safer
+rules in [its current design](selinux-policy-generation.md). Work on a new kind
+of protected approval comes after those basics.
 
 ---
 
-## Part I — Product doctrine
+## Part I: Product rules
 
-### 1. Purpose of this doctrine
+### 1. How to use these rules
 
-This part is the decision filter for LNP. It is intentionally normative. The
-words **must**, **should**, and **may** mean required, recommended unless there
-is recorded evidence for an exception, and optional respectively.
+Use this part when making product decisions. **Must** means required,
+**should** means recommended unless there is a recorded reason to differ, and
+**may** means optional.
 
-When a feature request, upstream convention, security control, or implementation
-shortcut conflicts with this doctrine, the maintainer must do one of three
-things:
+If a feature request, common Linux practice, security control, or shortcut
+conflicts with these rules, the maintainer must:
 
-- change the design to conform;
-- document the exception, affected users, risk, evidence, and removal plan in a
-  decision record; or
+- change the design to follow the rule;
+- record the exception, affected users, risk, evidence, and removal plan; or
 - decline the feature.
 
-“Other Linux desktops do this” is context, not evidence. “Windows/macOS users
-expect this” is a hypothesis until tested in LNP's context of use. Familiarity
-is valuable, but LNP copies a convention only when it improves transfer of
-learning without importing its failure modes.
+“Other Linux desktops do this” does not prove that it works for LNP. The same
+is true of assumptions about Windows or macOS users. Familiar designs are
+useful when they help people without bringing along the same problems.
 
 ### 2. Product promise and boundaries
 
@@ -586,7 +576,7 @@ not evidence of completion.
 
 ---
 
-## Part II — Authorization and security architecture v2
+## Part II: Security and approval
 
 ### 10. Security objective
 
@@ -746,7 +736,7 @@ switching users, or disconnecting a remote helper leaves the system unchanged.
 - Replay of a prior approval or response.
 - Approval racing with parameter or requester replacement.
 
-#### 13.3 Out of scope or only partially mitigated
+#### 13.3 Limits of this security model
 
 - A person who knowingly approves the accurately described harmful action.
 - Malware reading or destroying files already available to the compromised
@@ -919,7 +909,7 @@ Until the trusted presenter passes upstream security and accessibility review:
 - Tier 0 runs without a security prompt only after hostile-invocation review.
 - Tier 1 uses existing portals.
 - Tier 2 uses the ordinary system authentication path, even for an owner. This
-  is more friction than the north star, but it is honest.
+  adds more steps than the main product goal would like, but it is honest.
 - Tier 3 uses `auth_admin`, one operation per authentication.
 - Tier 4 has no normal action button.
 
@@ -1331,7 +1321,7 @@ must not be the only security approver.
 
 ---
 
-## Part III — Core-journey research and test matrix
+## Part III: User research and test plan
 
 ### 19. Purpose and research questions
 
@@ -1675,7 +1665,7 @@ efficiency, satisfaction, safety, and accessibility evidence.
 
 ---
 
-## Part IV — Accessibility audit and conformance plan
+## Part IV: Accessibility
 
 ### 28. Accessibility baseline
 
@@ -2010,14 +2000,14 @@ Stable release requires:
 
 ---
 
-## Part V — Delivery plan and traceability
+## Part V: Delivery plan
 
 ### 34. Required work sequence
 
 Security, accessibility, and usability work cannot be serialized as “build,
 then audit.” The safe sequence is:
 
-#### Phase 0 — Adopt the product contract
+#### Phase 0: Agree on the product rules
 
 - Make this specification the design/release authority and mark the legacy
   consent draft as historical.
@@ -2028,10 +2018,10 @@ then audit.” The safe sequence is:
 - Create evidence templates for feature gates, research findings, security
   review, and accessibility findings.
 
-**Exit:** maintainers agree on north star, non-goals, risk ladder, critical
+**Exit:** maintainers agree on the main goal, non-goals, risk levels, critical
 journeys, and stable-release gates.
 
-#### Phase 1 — Remove current high-risk gaps
+#### Phase 1: Fix current high-risk gaps
 
 - Replace `org.lnp.setup` and generic `lnp-setup` with narrow typed operations
   and action-specific policy; remove `auth_admin_keep`.
@@ -2048,7 +2038,7 @@ journeys, and stable-release gates.
 **Exit:** no Critical known blocker in the normal shell; no broad retained root
 authority; Tier 4 SELinux generation is absent from ordinary UI.
 
-#### Phase 2 — Build the durable experience
+#### Phase 2: Build the full experience
 
 - Evolve Welcome into relevant onboarding plus persistent Computer Care.
 - Implement structured task/progress/history/undo state and contextual Help.
@@ -2061,7 +2051,7 @@ authority; Tier 4 SELinux generation is absent from ordinary UI.
 **Exit:** J01–J12 and J15–J22 run end-to-end on supported fixtures with no
 terminal and pass the accessibility component gates.
 
-#### Phase 3 — Iterate with people
+#### Phase 3: Test and improve with people
 
 - Run discovery/context work before finalizing Computer Care information
   architecture.
@@ -2075,7 +2065,7 @@ terminal and pass the accessibility component gates.
 failure, and every critical assumption has direct evidence or a documented
 release limitation.
 
-#### Phase 4 — Upstream intent authorization
+#### Phase 4: Work on protected approval upstream
 
 - Write a standalone upstream protocol/threat-model proposal from Part II with
   KDE, GNOME, polkit, portal, PAM, accessibility, and distribution stakeholders.
@@ -2091,7 +2081,7 @@ release limitation.
 published security boundary, accessible reference implementation, adversarial
 tests, and no semantic misuse of authentication APIs.
 
-#### Phase 5 — Stable qualification
+#### Phase 5: Qualify a stable release
 
 - Run the complete security verification plan, accessibility audit, hardware
   matrix, and fault-injected core journeys on clean release images.
@@ -2118,7 +2108,7 @@ and §33 accessibility gates are satisfied.
 | Accessible LNP apps | Welcome uses Qt; SELinux's eframe dependency graph includes AccessKit | Unproven; must inspect runtime trees and complete manual/user tests |
 | Default graphical SELinux path | Separate `lnp-selinux` package exists; `lnp-desktop` does not require it | Contradicted after errord ownership change; add only after safety remediation |
 | Honest consent architecture | Legacy draft proposes consent through authentication response and a KWin trust claim without full AT/lifecycle design | Superseded by Part II; do not implement as written |
-| Product claims match current state | README status says welcome/error features are “still to come” although implementations exist; spec says “updates that cannot hurt you”; URLs use `example.invalid` | Contradicted/stale; documentation and release metadata need reconciliation |
+| Product claims match current state | README now lists the implemented tools and unfinished release checks; the spec still says “updates that cannot hurt you”; URLs still use `example.invalid` | Partial: README fixed; package wording and release metadata still need work |
 
 ### 36. Decision records required before implementation
 
@@ -2143,7 +2133,7 @@ review date.
 
 This design package is complete when it supplies, in one authority:
 
-- an enforceable product doctrine and north-star measure;
+- clear product rules and a measurable main goal;
 - target people, jobs, boundaries, interaction/content/recovery rules, and
   release gates;
 - a threat model with assets, actors, trust boundaries, invariants, risk tiers,

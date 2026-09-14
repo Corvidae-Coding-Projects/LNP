@@ -1,6 +1,6 @@
-# Feature: Initialization-Only Code and Data Reclamation
+# Initialization-only code and data reclamation
 
-## Summary
+## Goal
 Increase the amount of boot-only code and data that is annotated, verified, and reclaimed after initialization. The design uses call-graph and reference analysis to avoid retaining privileged initialization machinery while preventing unsafe references into freed init sections.
 
 ## Requirements
@@ -12,7 +12,7 @@ Increase the amount of boot-only code and data that is annotated, verified, and 
 - REQ-6: Preserve boot on supported firmware paths, CPU bring-up, initcalls, late init, module loading, suspend/resume, kexec, and crash-kernel setup.
 - REQ-7: Report reclaimed bytes and runtime text/data reduction for each release without turning size reduction into a correctness override.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: A reproducible call-graph report lists each new candidate, its last legal phase, retained reference reason, and final disposition.
 - [ ] AC-2 [REQ-2]: Annotated symbols appear in the expected init ELF sections and the final boot log records their reclamation after the last legal user.
 - [ ] AC-3 [REQ-3]: Modpost, objtool, and compiler checks reject seeded direct and function-pointer references from runtime code to an init symbol.
@@ -21,7 +21,7 @@ Increase the amount of boot-only code and data that is annotated, verified, and 
 - [ ] AC-6 [REQ-6]: QEMU matrices cover UEFI and BIOS boot, SMP bring-up, module load, suspend/resume where available, kexec, and crash-kernel reservation.
 - [ ] AC-7 [REQ-7]: Release verification records init text/data bytes before and after the feature and fails if a regression is unexplained.
 
-## Architecture
+## Technical plan
 The implementation extends the lifetime annotations in `../hdn-kernel/include/linux/init.h` and the freeing sequence in `../hdn-kernel/init/main.c`. Linker placement remains architecture-owned under `../hdn-kernel/arch/x86/kernel/`; HDN does not introduce a parallel boot lifecycle.
 
 A build-time analyzer consumes compiler call graphs, relocation records, modpost section-mismatch data, and objtool reachability. It distinguishes calls made during boot from function addresses stored for runtime callbacks. A candidate is accepted only when every incoming edge ends before reclamation. Ambiguous assembly or opaque callback registration keeps the symbol resident and appears in the report.
@@ -30,11 +30,11 @@ Mixed-lifecycle routines are split at the semantic boundary: parsing and one-tim
 
 Verification artifacts are generated through `verification/bin/hdn-verify`, and runtime misuse probes live under `../hdn-kernel/tools/testing/selftests/hardening/`. The production build keeps upstream section mismatch warnings fatal for HDN-touched paths.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults require proof-based annotation and x86-64 boot coverage before expansion.
+No open questions. The current plan requires evidence for each annotation and x86-64 boot testing before expanding the feature.
 
-## Out of Scope
+## Not included
 - Annotating code solely to maximize reclaimed byte counts.
 - Reclaiming late-init or hotplug code whose lifecycle remains active.
 - Changing upstream initcall ordering without a separate design.

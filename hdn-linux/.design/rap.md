@@ -1,6 +1,6 @@
-# Feature: RAP-Style Forward and Return Control-Flow Integrity
+# Forward and return control-flow integrity
 
-## Summary
+## Goal
 Add a coherent HDN control-flow integrity design that covers indirect-call type integrity and return-address integrity rather than treating upstream forward-edge CFI as complete. The initial implementation targets the GCC-built x86-64 release kernel, with objtool verification and an explicit Clang compatibility path.
 
 ## Requirements
@@ -12,7 +12,7 @@ Add a coherent HDN control-flow integrity design that covers indirect-call type 
 - REQ-6: Make violations deterministic, fail closed before the corrupted transfer, and expose only bounded build-relative diagnostic data.
 - REQ-7: Quantify code-size, kernel-build, syscall, networking, and context-switch costs before enabling each layer in the default profile.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: Negative tests replace an indirect target with a type-incompatible function and are stopped before invocation; positive tests cover legitimate callbacks and module interfaces.
 - [ ] AC-2 [REQ-2]: Corrupted, copied, and replayed return addresses are rejected across normal calls, interrupts, exceptions, syscalls, and task switches, while ORC unwinding remains correct.
 - [ ] AC-3 [REQ-3]: Enabling the XOR layer changes emitted return sequences and defeats the dedicated replay corpus; disabling it leaves the base return-integrity mechanism fully effective.
@@ -21,7 +21,7 @@ Add a coherent HDN control-flow integrity design that covers indirect-call type 
 - [ ] AC-6 [REQ-6]: Every injected violation produces a stable HDN event and controlled termination or panic according to sealed policy, without disclosing raw randomized addresses.
 - [ ] AC-7 [REQ-7]: Repeated benchmark runs report confidence intervals for text growth, build time, syscall latency, hackbench, networking throughput, and kernel compilation; default promotion records the accepted cost.
 
-## Architecture
+## Technical plan
 Upstream forward-edge CFI configuration is defined in `../hdn-kernel/arch/Kconfig`, but its scope does not provide return integrity. HDN adds orthogonal configuration in `../hdn-kernel/security/hardening/Kconfig`. The initial compiler instrumentation uses the existing GCC plugin framework under `../hdn-kernel/scripts/gcc-plugins/`, with a companion metadata format consumed by module loading and an objtool pass under `../hdn-kernel/tools/objtool/` that verifies coverage after compilation.
 
 Forward-edge metadata assigns normalized type identities to address-taken functions and call sites. Hashes are domain-separated by build identity and representation version; they are not relied upon as secrets. Direct calls remain unchanged. Assembly and dynamically generated call paths must use explicit annotations that objtool validates, so unsupported naked edges cannot silently escape coverage.
@@ -32,11 +32,11 @@ Module finalization in `../hdn-kernel/kernel/module/main.c` validates metadata b
 
 Verification combines compiler unit fixtures, objtool coverage checks, binary disassembly assertions, LKDTM-style corruption tests, and the QEMU hardening suite in `../hdn-kernel/tools/testing/selftests/hardening/`. GCC is the release gate; Clang builds must either use an equivalently verified implementation or fail configuration rather than silently omitting the feature.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select GCC/x86-64 as the first release target, require truthful Clang handling, and gate default enablement on measured compatibility and cost.
+No open questions. The current plan starts with GCC on x86-64, reports Clang support honestly, and requires compatibility and performance results before enabling it by default.
 
-## Out of Scope
+## Not included
 - Claiming that forward-edge Clang CFI alone provides RAP-equivalent coverage.
 - Supporting out-of-tree binary modules without matching metadata.
 - Using secret type hashes as the sole protection.

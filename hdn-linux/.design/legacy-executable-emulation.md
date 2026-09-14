@@ -1,6 +1,6 @@
-# Feature: Profile-Scoped Legacy Executable Emulation
+# Profile-scoped legacy executable emulation
 
-## Summary
+## Goal
 Provide narrow compatibility for legacy trampoline, signal-restorer, PLT, and dynamic-resolver patterns without granting broad writable-executable memory. Emulation is opt-in per authenticated application profile, preserves NX, and is invisible when the application does not require it.
 
 ## Requirements
@@ -12,7 +12,7 @@ Provide narrow compatibility for legacy trampoline, signal-restorer, PLT, and dy
 - REQ-6: Test glibc and supported legacy runtimes, malformed sequences, races, ptrace, signals, seccomp, containers, and executable updates.
 - REQ-7: Keep the mechanism absent from the default policy until a real supported workload requires it and the emulator passes the full adversarial corpus.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: Byte-accurate positive fixtures for every supported pattern execute, while single-byte mutations, truncated sequences, alternate opcodes, and unexpected control states are rejected.
 - [ ] AC-2 [REQ-2]: Unsigned, renamed, replaced, or policy-unlisted executables cannot activate emulation; a signed matching profile can activate only its declared pattern set.
 - [ ] AC-3 [REQ-3]: `/proc` mapping inspection and page-table probes show no new W+X stack, heap, file, or alias mapping during successful emulation.
@@ -21,7 +21,7 @@ Provide narrow compatibility for legacy trampoline, signal-restorer, PLT, and dy
 - [ ] AC-6 [REQ-6]: Runtime fixtures cover native and compat modes where enabled, signals, ptrace, seccomp, namespaces, containers, updates, and concurrent mapping changes.
 - [ ] AC-7 [REQ-7]: Default-policy tests prove all emulators are inactive, and enabling one named profile changes no unrelated process behavior.
 
-## Architecture
+## Technical plan
 Recognition integrates with executable-memory fault handling and architecture signal paths under `../hdn-kernel/arch/x86/mm/` and `../hdn-kernel/arch/x86/kernel/signal.c`. Configuration and policy hooks reside in `../hdn-kernel/security/hardening/Kconfig` and `../hdn-kernel/security/hardening/core.c`; no legacy global sysctl is introduced.
 
 Each emulator is a separate finite-state recognizer with a versioned pattern identifier. On an execute fault from NX memory, the kernel first authenticates the task's committed executable identity and signed profile, snapshots immutable instruction bytes with fault-safe reads, validates the complete pattern and register state, and performs only the semantic transition that the legacy sequence represents. It never makes the faulting page executable.
@@ -30,11 +30,11 @@ Resolver and PLT assistance binds the destination to the authenticated ELF mappi
 
 Userspace compatibility policy is compiled by the existing tools in `../hdn-kernel/tools/hardening/` and surfaced by HDN OS without asking ordinary users to manage PaX flags. Tests live under `../hdn-kernel/tools/testing/selftests/hardening/`, with real application fixtures maintained in the distro integration matrix.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select signed per-application profiles and no default-enabled emulator.
+No open questions. The current plan uses signed profiles for each application and keeps the emulator off by default.
 
-## Out of Scope
+## Not included
 - General binary translation or arbitrary instruction emulation.
 - Granting RWX memory to preserve legacy behavior.
 - Process-controlled global disable switches.

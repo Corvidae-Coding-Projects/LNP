@@ -4,8 +4,8 @@
   setroubleshoot text.
 - Maintain the risk ordering and make confirmation copy describe scope without
   implying that a generated rule affects only one path or process.
-- Keep D-Bus failures, authorization cancellation, helper failure, and success
-  distinct in both state and user-facing messages.
+- Do not mix up D-Bus errors, a cancelled password prompt, helper errors, and
+  success. Each needs its own state and message.
 - Watch mode must seed existing alerts as history and notify only on genuinely
   new records.
 - Add unit tests for parsers and selection rules. Run `cargo test --locked` and

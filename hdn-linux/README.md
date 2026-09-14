@@ -1,40 +1,51 @@
 # HDN Linux
 
-HDN Linux is a Linux kernel hardening patchset for a secure-by-default,
-daily-driver operating system. Security policy is intended to stay out of the
-user's way: normal applications, networking, drivers, and firmware work without
-terminal setup, while sensitive administration crosses a graphical PolicyKit
-approval boundary.
+HDN Linux is a set of kernel changes meant to make a desktop harder to attack.
+Normal apps, networking, drivers, and firmware should work without command-line
+setup. Changes that need administrator access go through a graphical approval
+screen.
 
-The current release candidate targets upstream Linux `7.0.12` on x86_64.
+The current test release is based on Linux `7.0.12` for x86-64 computers.
 
-> HDN is an independent implementation with its own policy model, interfaces,
-> tests, and source structure. Functional comparison does not imply source,
-> configuration, or ABI compatibility with grsecurity or PaX.
+HDN is its own implementation. It does not copy grsecurity or PaX interfaces,
+settings, or source code. Comparisons in this repository cover security
+behavior only.
 
-## At A Glance
+## What it tries to do
+
+- Make common memory-corruption attacks harder to use.
+- Limit risky kernel features unless an app or administrator needs them.
+- Stop one app from reading or changing another app's protected data.
+- Require signed policy and carefully checked administrator actions.
+- Keep normal desktop work usable and provide a recovery path when policy goes
+  wrong.
+
+This is still a release candidate. The listed virtual-machine tests passed,
+but testing on a wide range of physical computers is not complete.
+
+## At a glance
 
 | Item | Current result |
 | --- | --- |
 | Kernel base | Linux `7.0.12` |
 | Product target | x86_64 daily-driver desktop |
-| Equivalence matrix | 68/68 rows dispositioned |
-| Covered or upstream baseline | 66/68 rows (97.1%) |
-| Permanently deferred | 2/68 rows |
+| Comparison checklist | A decision is recorded for all 68 areas |
+| Covered by HDN or upstream Linux | 66/68 areas (97.1%) |
+| Future work | 2/68 areas are not implemented in this release |
 | QEMU hardening smoke | 1,111/1,111 pass |
 | Kallsyms API isolation | 3/3 pass |
 | Generic package build | 4,970 signed modules, 0 unsigned |
-| Full OS validation | Release-36 live, graphical install, reboot, adversarial, and application QA passed |
+| Full OS test | Release 36 passed live boot, graphical install, restart, attack, and app checks in QEMU |
 
-The two permanent deferrals are obsolete executable-memory emulation and exact
-PaX/grsecurity compiler-plugin or non-x86 architecture implementations beyond
-the selected upstream equivalents. See the
-[functional equivalence matrix](docs/HDN_GRSEC_EQUIVALENCE.md) for the evidence
-and disposition of every row.
+The two open areas are legacy executable-memory compatibility and additional
+PaX/grsecurity-style compiler or architecture work beyond the upstream Linux
+features used today. They remain future work. The
+[comparison table](docs/HDN_GRSEC_EQUIVALENCE.md) explains the current evidence
+for each area.
 
-## Security Model
+## Technical security model
 
-### Policy And Authority
+### Policy and permissions
 
 - Kernel-trusted, signed policy blobs with transactional commit, rollback, and
   one-way runtime sealing.
@@ -47,7 +58,7 @@ and disposition of every row.
 - Typed, signed object rules for files, directory trees, mounts, descriptors,
   devices, ptrace, and filesystem or abstract AF_UNIX sockets.
 
-### Memory And Exploit Mitigation
+### Memory and exploit protection
 
 - Global W+X prohibition, executable-stack and text-relocation controls, RELRO
   sealing, and narrowly scoped JIT compatibility policy.
@@ -56,7 +67,7 @@ and disposition of every row.
 - Locked security floors for low-address mappings, userfaultfd, BPF JIT,
   protected paths, coredumps, Yama, TIOCSTI, and related sysctls.
 
-### Kernel Attack Surface
+### Risky kernel features
 
 - Forced module signatures plus signed-policy admission for explicit and
   automatic module loading.
@@ -65,7 +76,7 @@ and disposition of every row.
 - Kernel-symbol and address redaction across procfs, sysfs, tracing, BPF, BTF,
   kallsyms, and formatted-symbol interfaces.
 
-### Process And Data Isolation
+### App and data isolation
 
 - Cross-process procfs disclosure controls for memory, argv, environment,
   credentials, scheduling, I/O, limits, and live syscall metadata.
@@ -75,7 +86,7 @@ and disposition of every row.
 - Hardened chroot, signal, terminal, IPC, socket, privileged-exec, and
   cross-profile ptrace behavior.
 
-### Audit And Operations
+### Logs and maintenance
 
 - Stable structured kernel events with decoding, flood suppression, policy
   learning, and persistent journald collection.
@@ -84,7 +95,7 @@ and disposition of every row.
 - Read-only system image sealing with fixed-operation package update and repair
   transactions.
 
-### Desktop Administration
+### Administrator actions
 
 - PolicyKit-backed administrator approval for typed actions rather than raw
   shell commands.
@@ -103,19 +114,19 @@ The detailed hook map and rationale live in the
 adversarial feature accounting and QEMU evidence live in the
 [equivalence matrix](docs/HDN_GRSEC_EQUIVALENCE.md).
 
-## Repository Layout
+## Files in this folder
 
 | Path | Purpose |
 | --- | --- |
 | `patches/hdn-linux-7.0.12.patch` | Generated patch against clean Linux 7.0.12 |
 | `docs/KERNEL_HARDENING_DESIGN.md` | Architecture, policy model, and hook map |
-| `docs/HDN_GRSEC_EQUIVALENCE.md` | Functional comparison, evidence, and deferrals |
+| `docs/HDN_GRSEC_EQUIVALENCE.md` | Feature comparison, evidence, and open work |
 | `docs/QA_REPORT.md` | Exact-ISO release-36 QA matrix, observations, and limits |
 | `docs/SOURCE_CONTROL.md` | Kernel source, patch, ABI, package, and OS release identity |
 | `scripts/verify-release-patch.sh` | Deterministic source and patch verification |
 | `LICENSE` | GPL-2.0 license |
 
-## Apply The Patch
+## Apply the patch
 
 ```sh
 tar -xf linux-7.0.12.tar.xz
@@ -204,16 +215,15 @@ HDN tracks three different completion levels:
 | Level | Status |
 | --- | --- |
 | Daily-driver security and usability | Release-candidate integration complete in QEMU; physical hardware qualification remains |
-| Broad grsecurity-style security effects | 66 covered/baseline rows; all release-scoped rows closed |
-| Exact PaX/compiler/architecture parity | Permanently out of scope where documented |
+| Broad grsecurity-style security effects | 66 covered/baseline rows; all 68 rows have a current status and 2 remain future work |
+| Additional PaX/compiler/architecture work | Not implemented in this release; tracked as future work |
 
-HDN does not clone grsecurity's RBAC language, configuration names, sysctl
-names, group selectors, text-log strings, private update process, or
-architecture-specific implementations. Expansion to additional operations,
-architectures, and compiler mechanisms is future work, not an untracked claim
-of current parity.
+The current release does not clone grsecurity's RBAC language, configuration
+names, sysctl names, group selectors, text-log strings, private update process,
+or architecture-specific implementations. Those gaps are future work, not
+features claimed by this release.
 
-## Development Workflow
+## Development workflow
 
 1. Make functional changes as commits on the HDN kernel source branch.
 2. Run focused builds and tests for the changed enforcement surface.

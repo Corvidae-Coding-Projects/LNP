@@ -1,13 +1,12 @@
 # Cross-Component Tests
 
-This folder contains Python `unittest` coverage for behavior that crosses
-scripts, privilege boundaries, or project folders.
+These Python tests check behavior that crosses scripts or security boundaries.
 
 - `test_regressions.py` covers layout backup/revert safety, recovery
   authentication, welcome result reporting, and helper entrypoint constraints.
-- `test_selinux_policy.py` covers selection and revalidation of authoritative
-  SELinux denial records, compiler/install failures, cleanup, and direct
-  unprivileged invocation.
+- `test_selinux_policy.py` checks that SELinux records are loaded again and
+  matched exactly before use. It also checks failures, cleanup, and attempts to
+  run the administrator tool without permission.
 
 Run the suite from the repository root:
 
@@ -15,5 +14,5 @@ Run the suite from the repository root:
 python3 -m unittest discover -s tests -v
 ```
 
-System commands are mocked and configuration writes use temporary directories;
-the suite must not make live desktop, package, policy, or login changes.
+The tests use fake system commands and temporary folders. They must not change
+the real desktop, installed packages, SELinux policy, or login service.

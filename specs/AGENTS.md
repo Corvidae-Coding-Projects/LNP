@@ -1,12 +1,11 @@
 # Agent Guide: Fedora Packaging
 
-- Treat specs as executable installation manifests: keep source paths,
-  dependencies, file modes, units, presets, desktop files, and `%files` lists
-  synchronized with the repository.
+- RPM specs control what gets installed. Keep source paths, dependencies, file
+  permissions, services, presets, desktop files, and `%files` lists in sync.
 - Keep runtime dependencies separate from build dependencies and assign files
   to the narrowest correct subpackage.
-- Use Fedora RPM macros for systemd lifecycle integration and preserve the
-  distinction between system and user units.
+- Use Fedora RPM macros for systemd setup. Do not mix up system services and
+  services that run for one user.
 - Do not commit generated RPMs, SRPMs, source archives, vendored crates, or
   build roots.
 - When changing versions or changelog entries, verify all cross-package version

@@ -1,14 +1,12 @@
 # LNP Design Documents
 
-This folder records product and security decisions that span the implementation
-folders.
+These documents explain decisions that affect more than one part of LNP.
 
-- `product-design.md` is the authoritative product doctrine, user-journey,
-  accessibility, authorization, architecture, and release-gate specification.
-- `selinux-policy-generation.md` documents the narrowly scoped flow for turning
-  one verified SELinux denial into one reviewed policy module.
-- `consent-design.html` is an earlier design exploration retained as history;
-  where it conflicts with `product-design.md`, the Markdown specification wins.
+- `product-design.md` is the current plan for the product, security,
+  accessibility, user testing, architecture, and release checks.
+- `selinux-policy-generation.md` explains how one checked SELinux denial can
+  become one reviewed policy module.
+- `consent-design.html` is an older design idea kept for reference. If it
+  disagrees with `product-design.md`, use `product-design.md`.
 
-Implementation READMEs should summarize their own area and link here rather
-than copying large sections of the canonical design.
+Other READMEs should link here instead of copying long sections of these files.

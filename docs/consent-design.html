@@ -373,27 +373,25 @@
 <div class="wrap">
 
   <header class="masthead">
-    <p class="eyebrow">LNP Design Document · Draft for discussion</p>
+    <p class="eyebrow">Older LNP design draft</p>
     <h1>Consent without passwords</h1>
     <p class="thesis">
-      Windows earns a passwordless click by putting the prompt somewhere your
-      programs cannot reach. Linux has no such place — but it has something
-      Windows does not: a compositor that already arbitrates every pixel and
-      every keystroke. This is a design for spending that.
+      This draft explored whether Linux could safely approve a small system
+      change with a protected click instead of a password. It is not the
+      current LNP security design.
     </p>
     <div class="note warn" role="note" aria-label="Superseded design notice">
       <span class="tag">Historical draft</span>
       <p>
-        This exploration is retained for design history. Its protocol and
-        security conclusions are superseded by the threat model, accessibility
-        requirements, and intent-authorization architecture in
-        <a href="product-design.md">the LNP Product and Safety Design
-        Specification</a>. Do not implement this draft as written.
+        This page is kept for design history. Read
+        <a href="product-design.md">the current product and safety plan</a>
+        before working on approval or security. Do not build this draft as
+        written.
       </p>
     </div>
     <div class="facts">
       <div><b>Scope</b><span>polkit 127 · KWin 6.7.4 · Fedora 44</span></div>
-      <div><b>Parts</b><span>B — polkit auth_consent · C — compositor anchor</span></div>
+      <div><b>Parts</b><span>B: polkit auth_consent · C: compositor anchor</span></div>
       <div><b>Status</b><span>Proposed, unbuilt</span></div>
     </div>
   </header>
@@ -405,12 +403,12 @@
         <li><a href="#problem">The problem</a></li>
         <li><a href="#shortcut">Why the shortcut fails</a></li>
         <li><a href="#threat">Threat model</a></li>
-        <li><a href="#partb">Part B — polkit</a></li>
-        <li><a href="#partc">Part C — compositor</a></li>
+        <li><a href="#partb">Part B: polkit</a></li>
+        <li><a href="#partc">Part C: compositor</a></li>
         <li><a href="#together">Composed flow</a></li>
         <li><a href="#mapping">Action mapping</a></li>
         <li><a href="#cost">Cost &amp; risk</a></li>
-        <li><a href="#nongoals">Non-goals</a></li>
+        <li><a href="#nongoals">Not covered</a></li>
         <li><a href="#phasing">Phasing</a></li>
       </ol>
     </nav>
@@ -570,7 +568,7 @@
         </li>
       </ul>
 
-      <h3>Explicitly out of scope</h3>
+      <h3>Not covered by this draft</h3>
       <ul>
         <li>
           <strong>A user who is socially engineered into clicking.</strong> No
@@ -1047,7 +1045,7 @@ interface kde_consent_surface_v1
 
     <!-- ============================================================ -->
     <section id="nongoals">
-      <span class="sec-label">09 — Non-goals</span>
+      <span class="sec-label">09 — Not covered</span>
       <h2>What this deliberately is not</h2>
 
       <ul>

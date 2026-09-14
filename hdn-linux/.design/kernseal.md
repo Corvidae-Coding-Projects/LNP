@@ -1,6 +1,6 @@
-# Feature: Lifecycle-Sealed Dynamic Kernel Objects
+# Lifecycle-sealed dynamic kernel objects
 
-## Summary
+## Goal
 Generalize HDN's existing policy and mitigation-table sealing into a typed lifecycle for dynamically allocated kernel objects that become immutable after configuration. KERNSEAL protects both logical mutation paths and writable memory aliases, with narrowly defined replacement rather than reopening sealed objects.
 
 ## Requirements
@@ -12,7 +12,7 @@ Generalize HDN's existing policy and mitigation-table sealing into a typed lifec
 - REQ-6: Reject post-seal mutation, invalid lifecycle transitions, type confusion, range overlap, and unregistered writable aliases with a bounded deterministic response.
 - REQ-7: Quantify memory fragmentation, TLB cost, replacement latency, and read-path overhead before enabling each object class by default.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: API unit tests exercise every legal transition and reject populate-after-seal, double seal, publish-before-validation, and destroy-while-published operations.
 - [ ] AC-2 [REQ-2]: Page-table inspection and negative writes prove sealed pages are read-only through all kernel aliases, and allocator tests prove no mutable object shares the protected granule.
 - [ ] AC-3 [REQ-3]: Concurrent replacement tests show readers observe either the complete old object or complete new object, never partial state, and the old object is reclaimed only after its reader discipline completes.
@@ -21,7 +21,7 @@ Generalize HDN's existing policy and mitigation-table sealing into a typed lifec
 - [ ] AC-6 [REQ-6]: Seeded mutation, overlap, wrong-type, and alias attacks are rejected before state changes and emit only stable build-relative diagnostics.
 - [ ] AC-7 [REQ-7]: Microbenchmarks report allocation waste, protected-page count, TLB effects, replacement latency, and read throughput for every default object class.
 
-## Architecture
+## Technical plan
 The current seed implementation is in `../hdn-kernel/security/hardening/core.c`, where the HDN policy and mitigation table already become immutable. KERNSEAL extracts a generic internal service while keeping public policy operations in their existing module. Configuration remains in `../hdn-kernel/security/hardening/Kconfig`.
 
 Each sealable type defines a descriptor with size and alignment constraints, validation callback, reader discipline, allowed replacement phase, and event class. Callers receive typed opaque handles rather than arbitrary address-plus-length registration. Storage comes from dedicated page-granular pools or seal-aware caches so page permission changes never freeze unrelated objects.
@@ -32,11 +32,11 @@ The API is internal and not exported indiscriminately to modules. Approved in-tr
 
 Verification lives under `../hdn-kernel/tools/testing/selftests/hardening/` with fault-injection helpers for illegal writes, stale handles, concurrent replacement, and pressure. KERNEXEC tests prove physical alias closure; KASAN, KCSAN, and lockdep cover lifetime and ordering.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select replacement-by-copy, typed registration, and measured per-class rollout.
+No open questions. The current plan replaces objects by copy, uses typed registration, and measures each object class before rollout.
 
-## Out of Scope
+## Not included
 - Arbitrary page sealing requested by loadable modules.
 - Reopening a published object for in-place editing.
 - Sealing mutable counters merely because they are security related.

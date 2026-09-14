@@ -1,6 +1,10 @@
-# Kernel Source And Release Identity
+# Kernel source and release identity
 
-## Authoritative Inputs
+This file answers a simple question: exactly which kernel source produced the
+published HDN patch? Use these versions and checksums when reproducing the
+release. A similar tree is not the same release.
+
+## Release inputs
 
 HDN kernel development uses normal Git commits in a Linux source tree. The
 release-30 source is identified by:
@@ -18,30 +22,24 @@ release-30 source is identified by:
 | Policy ABI | `1` |
 | HDN OS source tag | `v1.0.0-rc36` |
 
-## Source Of Truth
+## Source of truth
 
-The tagged kernel source commit is the implementation source of truth. The
-unified patch is a generated release interface for users who start from the
-kernel.org `linux-7.0.12.tar.xz` archive. Package release numbers identify
-packaging revisions of that source. Policy ABI changes require an explicit ABI
-version change and coordinated kernel, tools, policy, and OS package releases.
+The tagged kernel commit is the source used to build HDN. The patch is generated
+for people starting with the kernel.org `linux-7.0.12.tar.xz` archive. Package
+release numbers track packaging changes. A policy ABI change needs a new ABI
+version and matching kernel, tools, policy, and OS packages.
 
-The published `hdn-kernel` repository uses a compact two-commit snapshot chain:
-the exact `v7.0.12` tree followed by the exact HDN tree. Its upstream import
-message records the signed stable commit and archive checksum. This avoids
-republishing the kernel's full historical object graph while preserving normal
-line-level history for every HDN change. The local development branch may
-retain the full signed-tag ancestry; the published and local HDN tree IDs are
-identical.
+The published `hdn-kernel` repository has two commits: the exact `v7.0.12` tree
+and the exact HDN tree. The import commit records the signed upstream commit and
+archive checksum. The local development branch may keep the full upstream
+history, but its final HDN tree must have the same tree ID as the published one.
 
-Do not make functional edits directly in the generated patch. Make them as
-reviewable commits on the kernel source branch, run the focused and full
-hardening suites, then regenerate and verify the public artifact.
+Do not edit the generated patch by hand. Make kernel changes as commits in the
+source repository, run the needed tests, then rebuild and verify the patch.
 
 ## Verification
 
-Set paths explicitly when the kernel Git tree or upstream archive is not next
-to this repository:
+Set the paths when the kernel Git tree or upstream archive is elsewhere:
 
 ```sh
 HDN_KERNEL_GIT=/path/to/kernel-git \

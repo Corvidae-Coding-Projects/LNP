@@ -1,6 +1,6 @@
-# Feature: Optimized Null-Dereference Build Analysis
+# Optimized null-dereference build analysis
 
-## Summary
+## Goal
 Add a compiler-assisted reporting gate for potential null dereferences that remain visible after optimization, then route findings through review and targeted fixes. This is a correctness and exploitability-reduction tool, not runtime null-page emulation or a license to suppress compiler diagnostics broadly.
 
 ## Requirements
@@ -12,7 +12,7 @@ Add a compiler-assisted reporting gate for potential null dereferences that rema
 - REQ-6: Run analysis across the release configuration, sanitizer configurations, and representative optional subsystems because reachability and optimization vary by config.
 - REQ-7: Maintain a zero-unreviewed-finding gate for newly changed code and a burn-down ledger for accepted preexisting findings.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: Compiler fixtures detect seeded direct, field-offset, indirect-call, and `container_of` null paths after optimization and emit source-linked stable identifiers.
 - [ ] AC-2 [REQ-2]: Every report carries one category, reachability evidence, taint status, and optimization context; reviewers can reproduce it with the recorded command.
 - [ ] AC-3 [REQ-3]: The merged report preserves tool provenance and highlights conflicting results rather than deduplicating them away.
@@ -21,7 +21,7 @@ Add a compiler-assisted reporting gate for potential null dereferences that rema
 - [ ] AC-6 [REQ-6]: Baseline, analysis, KASAN, KCSAN, KMSAN, and fuzz configuration reports are generated and tied to their exact `.config` and compiler version.
 - [ ] AC-7 [REQ-7]: Diff-aware CI admits no new unreviewed identifier, and the ledger fails when an entry disappears, changes source meaning, or loses its justification.
 
-## Architecture
+## Technical plan
 The analyzer integrates with the release GCC pipeline through `../hdn-kernel/scripts/gcc-plugins/` and emits structured records consumed by `verification/bin/hdn-verify`. Existing Sparse, Smatch, and Coccinelle stages remain independent producers so correlated output cannot manufacture consensus.
 
 Analysis occurs after enough optimization to expose compiler-retained null paths but before source mapping is lost. It tracks nullability through PHI nodes, field offsets, inlining, container conversions, and indirect calls. Findings are keyed by semantic function and source span plus analyzer version, not generated object addresses.
@@ -30,11 +30,11 @@ The triage ledger is versioned beside verification configuration. Definite or at
 
 Runtime behavior remains governed by low-address protections and normal fault handling in the kernel; the feature does not map page zero. Regression probes live under `../hdn-kernel/tools/testing/selftests/hardening/`, while analysis reports and compiler identities are retained as external verification artifacts.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select a GCC-first reporting gate with source repair and tightly reviewed suppressions.
+No open questions. The current plan starts with GCC, fixes source problems, and allows only closely reviewed suppressions.
 
-## Out of Scope
+## Not included
 - Mapping page zero to keep buggy kernel code running.
 - Automatically rewriting every analyzer finding.
 - Treating absence of reports as proof of memory safety.

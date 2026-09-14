@@ -1,6 +1,6 @@
-# Feature: Compiler-Guided Spectre Dataflow Hardening
+# Compiler-guided Spectre dataflow hardening
 
-## Summary
+## Goal
 Add Respectre-style analysis that identifies attacker-influenced control and data flows vulnerable to speculative execution and inserts the narrowest correct masking or barrier primitive. The feature complements hardware and entry-path mitigations by finding source-level Spectre-v1 and selected Spectre-v4 gadgets that manual annotations miss.
 
 ## Requirements
@@ -12,7 +12,7 @@ Add Respectre-style analysis that identifies attacker-influenced control and dat
 - REQ-6: Preserve optimizer correctness and support the release GCC build, while reporting an explicit unsupported state for compiler configurations without equivalent analysis.
 - REQ-7: Measure gadget reduction and workload cost across syscalls, networking, storage, BPF, browsers, and kernel compilation before default promotion.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: Analyzer fixtures show taint propagation through arithmetic, structures, aliases, calls, and usercopy boundaries, and do not treat trusted kernel constants as tainted.
 - [ ] AC-2 [REQ-2]: A curated gadget corpus and seeded kernel examples are detected with source locations, while reviewed safe patterns remain below the recorded false-positive budget.
 - [ ] AC-3 [REQ-3]: Generated machine code contains the intended mask or barrier, and litmus plus side-channel tests show the protected gadget no longer transmits the secret.
@@ -21,7 +21,7 @@ Add Respectre-style analysis that identifies attacker-influenced control and dat
 - [ ] AC-6 [REQ-6]: GCC builds pass full verification; Clang builds either run a coverage-equivalent pass or fail the HDN option at configuration time.
 - [ ] AC-7 [REQ-7]: Automated scans report residual gadgets, and repeated performance runs record confidence intervals for the specified workloads and each instrumentation class.
 
-## Architecture
+## Technical plan
 The feature consumes the canonical helpers in `../hdn-kernel/include/linux/nospec.h`, architecture barriers in `../hdn-kernel/arch/x86/include/asm/barrier.h`, and mitigation state managed under `../hdn-kernel/arch/x86/kernel/cpu/bugs.c`. Configuration and truthful status reporting are added to `../hdn-kernel/security/hardening/Kconfig` and `../hdn-kernel/security/hardening/core.c`.
 
 The initial analyzer is a GCC interprocedural pass integrated through `../hdn-kernel/scripts/gcc-plugins/`. It models attacker sources, validation predicates, speculation-insensitive dependencies, and disclosure sinks. Findings have stable identifiers derived from semantic source locations. For patterns that can be safely transformed, the pass emits a mask or dependency; ambiguous cases fail the hardened build until source is annotated or rewritten.
@@ -30,11 +30,11 @@ Spectre-v1 handling prefers `array_index_nospec()`-style masking because it loca
 
 The suppression file is versioned with the verification tools and checked for stale entries. Machine-code auditing and side-channel fixtures run from `verification/bin/hdn-verify`; runtime tests live in `../hdn-kernel/tools/testing/selftests/hardening/`. TCG validates functional instrumentation while host hardware is mandatory for timing and leakage measurements.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults choose GCC/x86-64 first, source-visible suppressions, and hardware measurement before default rollout.
+No open questions. The current plan starts with GCC on x86-64, keeps suppressions visible in source, and requires hardware measurements before default rollout.
 
-## Out of Scope
+## Not included
 - Claiming complete protection against every transient-execution class.
 - Replacing CPU microcode or architecture-level mitigations.
 - Hiding unresolved analyzer findings behind a global warning-only mode.

@@ -1,6 +1,6 @@
-# Feature: HDN Compatibility and Policy Translation Interfaces
+# HDN compatibility and policy translation interfaces
 
-## Summary
+## Goal
 Provide stable HDN-native adapters for software that historically expects PaX flags, grsecurity administration concepts, security sysctls, group controls, or recognizable denial categories. The layer translates intent into signed HDN profiles without impersonating unsupported legacy semantics or exposing a global weakening switch.
 
 ## Requirements
@@ -12,7 +12,7 @@ Provide stable HDN-native adapters for software that historically expects PaX fl
 - REQ-6: Preserve sealed policy monotonicity: compatibility translation may narrow behavior or select preapproved capability sets but cannot relax runtime-sealed global invariants.
 - REQ-7: Test package installation, upgrades, rollback, containers, Flatpak boundaries, malformed metadata, races, and unsupported legacy requests end to end.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: A machine-readable inventory names each consumer, observed legacy interface, required behavior, HDN disposition, and regression fixture; no interface is implemented solely because it existed historically.
 - [ ] AC-2 [REQ-2]: Schema conformance tests accept every supported intent, reject unknown or semantically broader requests, and retain backward compatibility across documented schema versions.
 - [ ] AC-3 [REQ-3]: Renamed, replaced, mutated, unsigned, or rolled-back executables cannot inherit a stale grant; a verified package update can obtain only its newly compiled profile.
@@ -21,7 +21,7 @@ Provide stable HDN-native adapters for software that historically expects PaX fl
 - [ ] AC-6 [REQ-6]: Attempts to translate an intent that would disable KERNEXEC, UDEREF, RAP, module signing, or another sealed mandatory invariant fail before policy mutation.
 - [ ] AC-7 [REQ-7]: Distro integration tests cover install, update, rollback, containers, malformed metadata, concurrent launch/update, and every unsupported-intent error path.
 
-## Architecture
+## Technical plan
 The existing kernel interface is `../hdn-kernel/include/uapi/linux/hardening.h`, with policy orchestration in `../hdn-kernel/security/hardening/core.c`. Userspace policy compilation and status already live in `../hdn-kernel/tools/hardening/`; those tools remain the translation authority and are packaged by the sibling `../hdn-os/packages/hdn-tools/` integration.
 
 An offline compiler consumes package-owned compatibility declarations, verifies their provenance, and emits ordinary HDN policy fragments. Legacy ELF flags are inputs to migration tooling, not mutable runtime authority. A `gradm`-named shim is provided only if a real consumer cannot be migrated; it reports unsupported commands precisely and never claims to configure an RBAC system that HDN does not implement.
@@ -30,11 +30,11 @@ Legacy sysctl and group concepts map to explicit policy capabilities tied to aut
 
 The HDN OS tests under `../hdn-os/tests/` exercise package transactions and desktop presentation. Kernel selftests verify policy monotonicity, identity invalidation, and unsupported operations. The release manifest records schema and policy-compiler versions so rollback cannot combine incompatible components silently.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select HDN-native semantics, userspace-first translation, and signed per-application profiles.
+No open questions. The current plan keeps HDN's own behavior, translates in userspace first, and uses signed profiles for each application.
 
-## Out of Scope
+## Not included
 - Reimplementing the full grsecurity RBAC system or `gradm` command surface.
 - Advertising binary compatibility where semantics differ.
 - Ambient privilege based only on numeric group membership.

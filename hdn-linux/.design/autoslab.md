@@ -1,6 +1,6 @@
-# Feature: Automatic Allocation-Type Slab Isolation
+# Automatic allocation-type slab isolation
 
-## Summary
+## Goal
 Automatically separate security-relevant allocation types and incompatible call-site domains so a freed object of one type is less useful for reclaiming as another. The design extends SLUB with compiler- or macro-provided allocation identity while retaining bounded memory overhead and explicit fallback behavior.
 
 ## Requirements
@@ -12,7 +12,7 @@ Automatically separate security-relevant allocation types and incompatible call-
 - REQ-6: Provide build-time coverage reporting and runtime status so missing type metadata is visible to developers but not disruptive to ordinary users.
 - REQ-7: Measure allocator latency, memory overhead, boot time, desktop workload behavior, and allocation-heavy server workloads before profile promotion.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: Compiler or macro tests assign identical stable identities to the same complete type across translation units and distinct identities to seeded incompatible types.
 - [ ] AC-2 [REQ-2]: Allocation tests preserve size, alignment, NUMA node, memcg charge, GFP failure behavior, and sanitizer metadata for isolated allocations.
 - [ ] AC-3 [REQ-3]: Freelist-reuse tests show that objects from designated hostile domains never occupy one another's isolated cache, including after CPU draining and memory pressure.
@@ -21,7 +21,7 @@ Automatically separate security-relevant allocation types and incompatible call-
 - [ ] AC-6 [REQ-6]: The build report lists typed, call-site, and unclassified allocation sites; `hdn-status` reports aggregate coverage without exposing address or freelist information.
 - [ ] AC-7 [REQ-7]: Repeated SLUB microbenchmarks, kernel builds, boot tests, desktop traces, networking, and filesystem workloads record confidence intervals and accepted costs.
 
-## Architecture
+## Technical plan
 SLUB integration belongs in `../hdn-kernel/mm/slub.c`, `../hdn-kernel/mm/slab_common.c`, and `../hdn-kernel/include/linux/slab.h`. Existing `CONFIG_SLAB_BUCKETS` in `../hdn-kernel/mm/Kconfig` is treated as a useful primitive, not proof of general type isolation, because current substantive callers cover only a small part of the allocation surface.
 
 Allocation identity is carried as compact compile-time metadata. Typed allocation macros derive an identity from the pointee type; untyped helpers use a stable domain token attached to the call site or wrapper API. AUTOTYPENAME-style metadata must be deterministic for a source build and independent of randomized virtual addresses. AUTOSTACK-style isolation is limited to heap objects whose allocating API can preserve identity; literal stack variables are outside SLUB.
@@ -30,11 +30,11 @@ The allocator maps identities to cache classes during initialization. Mandatory 
 
 Modules register identity metadata before executable finalization and cannot choose an existing privileged domain arbitrarily. Runtime counters and bounded events are implemented through `../hdn-kernel/security/hardening/core.c`; raw freelist state remains privileged. KASAN, KFENCE, KMSAN, hardened usercopy, and slab debugging each receive a matrix configuration in `verification/configs/`.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select type-aware isolation with measured tiering and x86-64 release validation.
+No open questions. The current plan uses type-aware isolation, measured tiers, and x86-64 release testing.
 
-## Out of Scope
+## Not included
 - One cache for every source allocation expression regardless of cost.
 - Treating current `CONFIG_SLAB_BUCKETS` coverage as complete AUTOSLAB.
 - Hiding allocation failures or silently merging mandatory hostile domains.

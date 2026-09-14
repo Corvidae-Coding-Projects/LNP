@@ -1,13 +1,12 @@
 # Layout Applier
 
-This folder owns delivery of the LNP Plasma layout to an individual user. The
-applier runs inside the graphical session, backs up every configuration file it
-may replace, records the applied layout version, and supports status, explicit
-reapplication, and restoration of the latest valid backup.
+This is the tool that applies the LNP layout for a user. It runs after sign-in,
+saves the settings it may replace, and records the layout version. It can also
+show its status, apply the layout again, or restore the last good backup.
 
 ## Files
 
-- `lnp-apply-layout` implements apply, backup, status, and revert behavior.
+- `lnp-apply-layout` applies, backs up, checks, and restores the layout.
 - `lnp-apply.service` runs the idempotent applier in the Plasma user session.
 - `80-lnp.preset` enables the user service by default for new installations.
 
@@ -21,4 +20,4 @@ bash -n apply/lnp-apply-layout
 python3 -m unittest discover -s tests -p 'test_regressions.py' -v
 ```
 
-The tests replace desktop commands and write only into temporary XDG paths.
+The tests use fake desktop commands and temporary settings folders.

@@ -1,9 +1,9 @@
 # Agent Guide: Design Documents
 
-- Keep theorem-like requirements, observed behavior, proposals, and open work
-  visibly distinct. Do not turn an aspiration into a claimed implementation.
-- Treat `product-design.md` as authoritative for LNP product and safety choices.
-  Preserve the historical status of `consent-design.html`.
+- Label requirements, observed behavior, proposals, and unfinished work. Do not
+  describe a goal as if it were already built.
+- Use `product-design.md` for current product and safety choices.
+  `consent-design.html` is an older design kept for reference.
 - Use plain language suitable for readers who are not Linux administrators,
   while retaining exact commands, paths, and privilege boundaries.
 - Verify implementation claims against current source before documenting them.

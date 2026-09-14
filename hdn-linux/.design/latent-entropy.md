@@ -1,6 +1,6 @@
-# Feature: Conservative Latent Entropy Mixing
+# Conservative latent entropy mixing
 
-## Summary
+## Goal
 Evaluate compiler-generated and runtime execution variability as supplemental random-pool input for entropy-starved systems, while assigning it zero entropy credit. The mechanism may improve state diversity but can never make readiness claims, unblock cryptographic consumers, or replace hardware and operating-system entropy sources.
 
 ## Requirements
@@ -12,7 +12,7 @@ Evaluate compiler-generated and runtime execution variability as supplemental ra
 - REQ-6: Validate compiler stability, undefined-behavior absence, stack initialization, sanitizer compatibility, and data-erasure behavior for instrumented state.
 - REQ-7: Measure boot, fork, interrupt, power, and code-size overhead and keep the feature profile-gated unless a supported entropy-starved platform demonstrates value.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: The security analysis states what uncertainty may be added, what an observer can predict, and why no cryptographic entropy claim derives from the feature.
 - [ ] AC-2 [REQ-2]: Binary inspection confirms instrumentation only at the reviewed site list, bounded stack/register use, and no export of internal state through logs or status APIs.
 - [ ] AC-3 [REQ-3]: Random-subsystem tests prove the input path adds zero credited bits and cannot change the transition to initialized by itself.
@@ -21,7 +21,7 @@ Evaluate compiler-generated and runtime execution variability as supplemental ra
 - [ ] AC-6 [REQ-6]: GCC builds plus KASAN, KCSAN, KMSAN, UBSAN-supported checks, stack-init tests, and compiler differential tests report no uninitialized read or undefined behavior.
 - [ ] AC-7 [REQ-7]: Repeated measurements report boot, fork, interrupt, power where measurable, and text-size overhead; the default profile remains off absent platform-specific acceptance evidence.
 
-## Architecture
+## Technical plan
 Integration uses the existing random subsystem in `../hdn-kernel/drivers/char/random.c` and compiler support under `../hdn-kernel/scripts/gcc-plugins/`. Configuration and honest status reside in `../hdn-kernel/security/hardening/Kconfig` and `../hdn-kernel/security/hardening/core.c`.
 
 The compiler pass creates per-site mixing state from defined integer operations, initialized values, timing samples already legal at that phase, and domain-separated compile-time constants. It never reads padding or uninitialized memory. Sites are selected from an allowlist based on frequency and platform need, not inserted indiscriminately into hot paths.
@@ -30,11 +30,11 @@ Runtime contributions call a dedicated no-credit mixing wrapper that is mechanic
 
 Verification includes symbol and call-graph assertions that the wrapper cannot reach crediting APIs, compiler fixtures, deterministic test builds, and boot matrices from `verification/bin/hdn-verify`. Statistical output is used only to detect broken or constant mixing, never to estimate security bits.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults classify latent entropy as supplemental, zero-credit, and profile-gated.
+No open questions. The current plan treats latent entropy as an optional extra, gives it no security credit, and controls it by profile.
 
-## Out of Scope
+## Not included
 - Claiming a quantified number of cryptographic entropy bits.
 - Unblocking `/dev/random` or CRNG initialization.
 - Replacing hardware RNG, jitter entropy, or device-event collection.

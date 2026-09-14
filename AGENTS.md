@@ -2,22 +2,22 @@
 
 ## Mission
 
-LNP makes Fedora KDE Plasma understandable and recoverable for people who do
-not administer Linux. Preserve plain language, reversible behavior, explicit
-authorization, and safe failure modes.
+LNP should be easy to understand and recover without Linux training. Use plain
+language. Make changes reversible. Ask before administrator actions. Report
+failures honestly.
 
 ## Repository rules
 
 - Read the local `README.md` and nearest `AGENTS.md` before changing a folder.
-- Keep unprivileged UI/session code separate from root helpers. Never broaden a
-  polkit action or pass untrusted text through a shell.
+- Keep normal apps separate from administrator helpers. Never widen a polkit
+  rule or pass untrusted text through a shell.
 - Do not test against a live desktop, package database, SELinux policy, or
   Btrfs root when a mocked or disposable environment can establish the result.
 - Keep service units, presets, desktop files, and the matching RPM spec in sync.
-- Preserve hand-editable state formats and the documented backup/revert paths.
-- Treat `docs/product-design.md` as the authoritative LNP product and safety
-  specification. Treat `hdn-linux/docs/SOURCE_CONTROL.md` as authoritative for
-  the provenance of the HDN release patch.
+- Keep state files easy to edit by hand and do not break documented restore
+  paths.
+- Follow `docs/product-design.md` for LNP product and safety decisions. Follow
+  `hdn-linux/docs/SOURCE_CONTROL.md` for the source of the HDN release patch.
 
 ## Baseline validation
 

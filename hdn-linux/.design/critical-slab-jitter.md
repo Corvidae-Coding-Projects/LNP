@@ -1,6 +1,6 @@
-# Feature: Critical Slab Object Jitter and Reuse Resistance
+# Critical slab object jitter and reuse resistance
 
-## Summary
+## Goal
 Make heap grooming against a small set of critical kernel objects less deterministic by varying payload placement, checking hidden canaries, and reducing immediate same-address reuse. This is a targeted defense for credentials, file state, and similarly high-value objects, not a claim that random padding repairs memory-safety bugs.
 
 ## Requirements
@@ -12,7 +12,7 @@ Make heap grooming against a small set of critical kernel objects less determini
 - REQ-6: Preserve crash-dump analysis, slab debugging, KASAN, KFENCE, KMSAN, lockdep, memcg accounting, NUMA, and RCU diagnostics.
 - REQ-7: Measure memory overhead, allocator latency, cache footprint, and attack-corpus success probability for each protected class.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: The design inventory names every enabled object class, allocating and freeing APIs, attacker influence, intended disruption, and explicit residual risk.
 - [ ] AC-2 [REQ-2]: Repeated allocation samples demonstrate the configured aligned offset distribution, while object constructors, usercopy checks, RCU callbacks, and sanitizers pass.
 - [ ] AC-3 [REQ-3]: Seeded underflow, overflow, stale-write, and wrong-type-free tests corrupt the canary and are detected before object reuse or security-sensitive consumption.
@@ -21,7 +21,7 @@ Make heap grooming against a small set of critical kernel objects less determini
 - [ ] AC-6 [REQ-6]: Slab debug, KASAN, KFENCE, KMSAN, lockdep, memcg, NUMA, RCU, and crash-dump test configurations retain correct object attribution.
 - [ ] AC-7 [REQ-7]: Per-class benchmarks and an automated heap-grooming corpus record overhead and predictability reduction; only classes within the accepted profile budget are default-on.
 
-## Architecture
+## Technical plan
 Allocator support is implemented in `../hdn-kernel/mm/slub.c`, `../hdn-kernel/mm/slab_common.c`, and `../hdn-kernel/include/linux/slab.h`. Protected types use explicit typed helpers located with their owning subsystem; the first candidates are selected from the credential and file-object allocation paths after full call-site inventory.
 
 A protected cache allocates a fixed maximum envelope sized for alignment, jitter range, canary, and allocator metadata. A boot-secret pseudorandom function chooses an aligned payload offset from the allowed range for each allocation. Translation metadata is stored in allocator-controlled bytes validated before use; it is not stored in a predictable writable field inside the payload. The returned payload pointer remains stable for the object's lifetime.
@@ -30,11 +30,11 @@ The canary binds cache identity, backing slot, payload offset, and allocation ge
 
 AUTOSLAB ensures hostile types do not share the cache, while this feature adds within-type placement and temporal uncertainty. Events use `../hdn-kernel/security/hardening/core.c` and redact allocator secrets and addresses. Tests under `../hdn-kernel/tools/testing/selftests/hardening/` include statistical distribution checks, corruption probes, and deterministic seeded mode available only in test kernels.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults select a small reviewed critical-object set and benchmarked profile expansion.
+No open questions. The current plan starts with a small reviewed set of critical objects and expands it only after benchmarks.
 
-## Out of Scope
+## Not included
 - Applying maximum jitter and quarantine to every kernel allocation.
 - Treating randomness as a replacement for fixing use-after-free or overflow defects.
 - Exposing offsets, canaries, or quarantine state to unprivileged users.

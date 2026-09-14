@@ -1,6 +1,6 @@
-# Feature: UDEREF-Style User and Kernel Address Separation
+# User and kernel address separation
 
-## Summary
+## Goal
 Strengthen the boundary between user pointers and kernel accesses so that user memory is reachable only through explicit, auditable uaccess windows. Hardware SMAP remains the x86-64 fast path, with static verification and an optional software fallback for supported CPUs that lack SMAP.
 
 ## Requirements
@@ -11,7 +11,7 @@ Strengthen the boundary between user pointers and kernel accesses so that user m
 - REQ-5: Preserve ptrace, signal delivery, io_uring, userfaultfd, virtualization, compat tasks, and high-throughput read/write behavior.
 - REQ-6: Integrate denials and degradation with the bounded HDN event channel and sealed policy, without exposing raw address data to ordinary users.
 
-## Acceptance Criteria
+## How we will know it works
 - [ ] AC-1 [REQ-1]: Boot tests on SMAP-capable QEMU and hardware show CR4.SMAP set after policy sealing, and a deliberate attempt to clear it is restored or rejected and logged.
 - [ ] AC-2 [REQ-2]: Instrumented selftests prove ordinary kernel dereferences of user mappings fault while `copy_from_user()`, `copy_to_user()`, and approved nofault helpers continue to work.
 - [ ] AC-3 [REQ-3]: Objtool and semantic-patch checks run in CI with zero unexplained direct user-pointer dereferences or access windows spanning a scheduler, callback, or exception-unsafe boundary.
@@ -19,7 +19,7 @@ Strengthen the boundary between user pointers and kernel accesses so that user m
 - [ ] AC-5 [REQ-5]: Relevant kernel selftests and HDN regression tests for ptrace, signals, io_uring, userfaultfd, KVM guest I/O, 32-bit compatibility where enabled, and bulk I/O pass.
 - [ ] AC-6 [REQ-6]: `hdn-status` distinguishes hardware, software, and unsupported states; audit events identify the call site by stable kernel build identity rather than leaking a raw pointer.
 
-## Architecture
+## Technical plan
 The hardware path builds on CR4 pinning in `../hdn-kernel/arch/x86/kernel/cpu/common.c` and the existing access-window assembly in `../hdn-kernel/arch/x86/include/asm/uaccess.h`. The HDN switch and dependency rules reside in `../hdn-kernel/security/hardening/Kconfig`; state reporting uses `../hdn-kernel/security/hardening/core.c` and the existing policy/status interface.
 
 Access windows become lexically paired operations with debug-state tracking available in analysis builds. Entry code must close user access before invoking callbacks, scheduling, or returning through an exception path. Objtool gains rules that understand STAC/CLAC and equivalent macros, while Coccinelle checks reject plain casts that discard `__user`. The production fast path remains the same small instruction sequence when SMAP is available.
@@ -28,11 +28,11 @@ The software fallback is separately named and reported. It may use constrained p
 
 Tests live in `../hdn-kernel/tools/testing/selftests/hardening/` and include exception fixups, nested interrupts, preemption, NMI observation, and malicious user mappings. Static checks run through `verification/bin/hdn-verify`; TCG supplies selectable CPU feature sets and host KVM validates realistic interrupt and I/O behavior.
 
-## Open Questions
+## Open questions
 
-None. The accepted defaults require hardware-first enforcement, truthful fallback reporting, and x86-64 delivery before cross-architecture work.
+No open questions. The current plan uses hardware protection first, reports fallback limits honestly, and finishes x86-64 before other architectures.
 
-## Out of Scope
+## Not included
 - Reintroducing `set_fs()` or a process-wide address-limit override.
 - Hiding whether a CPU lacks SMAP.
 - Replacing normal Linux uaccess APIs with an HDN-only userspace ABI.

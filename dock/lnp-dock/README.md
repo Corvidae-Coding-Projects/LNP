@@ -1,20 +1,19 @@
 # `lnp-dock` Rust Crate
 
-`lnp-dock` is a native Wayland layer-shell dock for KDE Plasma. It renders its
-own surface, discovers applications and windows, supports persistent pins and
-drag reordering, provides application and context menus, and implements
-pointer-responsive magnification.
+`lnp-dock` is a Wayland dock for KDE Plasma. It finds installed apps and open
+windows, remembers pinned apps, supports drag-and-drop ordering, and enlarges
+icons near the pointer.
 
 ## Source map
 
-- `src/main.rs` owns Wayland setup, event dispatch, surfaces, input, and layout.
+- `src/main.rs` handles Wayland setup, events, surfaces, input, and layout.
 - `apps.rs` and `appsmenu.rs` discover and present installed applications.
 - `launchers.rs` parses desktop entries and launches resolved applications.
-- `pins.rs` owns persistent pin parsing and reorder behavior.
+- `pins.rs` reads, saves, and reorders pinned apps.
 - `windows.rs` tracks Plasma windows.
-- `magnify.rs`, `render.rs`, and `text.rs` own geometry and drawing.
-- `menu.rs` and `tooltip.rs` own transient UI models.
-- `tests/startup.rs` checks startup behavior at the compositor boundary.
+- `magnify.rs`, `render.rs`, and `text.rs` handle sizing and drawing.
+- `menu.rs` and `tooltip.rs` handle temporary popups.
+- `tests/startup.rs` checks startup when no compositor is available.
 
 ## Build and test
 
@@ -23,5 +22,5 @@ cargo build --locked
 cargo test --locked
 ```
 
-Runtime integration requires a Wayland compositor with layer-shell and KDE
-Plasma window-management protocols.
+Running the dock requires a Wayland compositor that supports layer shell and
+KDE Plasma's window-management protocol.

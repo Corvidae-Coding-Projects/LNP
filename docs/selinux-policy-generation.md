@@ -1,31 +1,28 @@
 # Custom SELinux policy generation
 
-Implementation decision, 2026-09-13: retain custom policy generation and repair
-its scope. This supersedes the earlier product-design instruction to remove
-that feature. The user explicitly requested preservation of the capability.
+Decision from 2026-09-13: keep custom policy generation, but limit it to one
+specific and verified SELinux alert. This replaces the earlier plan to remove
+the feature.
 
-The action remains behind an explicit confirmation and the existing per-action
-administrator authentication. The confirmation identifies the alert and explains
-that a generated SELinux rule applies to security types, potentially affecting
-other files and processes with those types.
+The user must confirm the change and approve it as an administrator. The app
+names the alert and explains that SELinux rules apply to security types. This
+means a rule may affect other files or programs that use the same types.
 
-The GUI supplies the alert UUID, last-seen date, and exact displayed denial as
-expected values. The privileged helper fetches that UUID from setroubleshoot on
-the system bus. Only a matching authoritative record can reach `audit2allow`;
-caller text alone is never sufficient. Changed or missing alerts fail without
-installation. The helper rechecks the selection immediately before installing.
+The app sends the alert ID, date, and the exact denial it showed. The
+administrator helper loads that alert again from setroubleshoot. It sends data
+to `audit2allow` only when the system record matches exactly. A missing or
+changed alert stops the process. The helper checks again before installation.
 
-Only one AVC/USER_AVC record is supported per alert event. The current
-setroubleshoot API returns the entire audit event, which can contain denials
-associated with multiple alerts. Ambiguous events require further review and
-are never combined into one permission module. Other records, alerts, and
-recent audit-log activity are excluded from compiler input.
+One alert event must contain exactly one supported denial. Setroubleshoot can
+return an event with denials from more than one alert. The helper rejects those
+events instead of guessing or combining them. It does not use other alerts or
+recent audit-log entries.
 
-The helper generates plain type-enforcement rules with `audit2allow -N`, uses
-a private temporary directory, derives a module name from the alert and record,
-and logs the installed name. Its success output includes the removal command.
-No arbitrary module name or shell command is accepted from the caller.
+The helper creates a basic type-enforcement rule with `audit2allow -N`. It uses
+a private temporary folder and builds the module name from the checked alert.
+It records the installed name and prints the command needed to remove it. The
+app cannot provide its own module name or shell command.
 
-Validation uses mocked system-bus responses and compiler/installer calls to
-cover selected versus unrelated denials, stale records, ambiguous events,
-missing alerts, invalid inputs, build failures, and installation failures.
+Tests use fake system-bus, compiler, and installer calls. They cover unrelated
+or old denials, unclear events, missing alerts, bad input, build errors, and
+installation errors without changing the host's SELinux policy.

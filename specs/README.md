@@ -1,7 +1,6 @@
 # Fedora RPM Specifications
 
-This folder is the packaging authority for the repository's installable LNP
-components.
+These files tell Fedora how to build and install LNP packages.
 
 - `lnp.spec` builds the desktop metapackage and the look-and-feel, defaults,
   apply, welcome, error, guard, and recovery subpackages.
@@ -9,7 +8,6 @@ components.
 - `lnp-selinux.spec` builds and installs the SELinux alert UI, helpers, polkit
   action, and session files.
 
-The spec versions are release versions and may intentionally differ from an
-internal Cargo package version. Every installed source file must appear in the
-corresponding `%install` and `%files` sections with the correct mode and owning
-subpackage.
+The version in an RPM spec may differ from the version inside a Rust crate.
+Every installed file must appear in the matching `%install` and `%files`
+sections with the right permissions and package name.

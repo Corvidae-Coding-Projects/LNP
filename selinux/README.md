@@ -1,20 +1,21 @@
 # LNP Security Alerts
 
-This folder contains the plain-language SELinux alert application and the
-small privileged boundary used to apply a reviewed fix.
+This folder contains an app that explains SELinux blocks and a small set of
+administrator tools that can apply a reviewed fix.
 
 ## Layout
 
 - `lnp-selinux/` is the Rust GUI and background alert watcher.
-- `lnp-selinux-fix` is the root helper with a fixed action vocabulary.
-- `lnp-selinux-policy` independently reloads and verifies one selected denial
-  before generating a custom policy module.
+- `lnp-selinux-fix` is the administrator helper. It accepts only a fixed list
+  of actions.
+- `lnp-selinux-policy` reloads and checks one selected block before creating a
+  custom policy module.
 - `org.lnp.selinux.policy` defines polkit authorization.
 - The desktop file, user service, and preset integrate the application into the
   Plasma session.
 
-The flow is documented in `../docs/selinux-policy-generation.md`; packaging is
-in `../specs/lnp-selinux.spec`.
+The safety checks are explained in `../docs/selinux-policy-generation.md`.
+Packaging is in `../specs/lnp-selinux.spec`.
 
 ## Validation
 

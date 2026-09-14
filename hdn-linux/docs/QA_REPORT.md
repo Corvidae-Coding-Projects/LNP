@@ -1,18 +1,18 @@
 # HDN OS Release 36 QA Report
 
-This report records validation of the HDN Linux `7.0.12` patch as shipped in
-the release-36 HDN OS image. It distinguishes tested behavior from broader
-hardware or production-signing claims.
+This report says what was tested in the release 36 HDN OS image. It covers the
+HDN Linux `7.0.12` patch in QEMU. It does not claim that every physical computer
+or production Secure Boot setup has been tested.
 
 ## Result
 
-**QEMU release-candidate result: pass.** No release-blocking kernel-hardening,
-desktop, installation, package, or sandbox regression was observed.
+**QEMU result: pass.** The tests found no release-blocking problem in kernel
+hardening, the desktop, installation, packages, or sandboxes.
 
-Physical hardware coverage, the FCoE installer path, and a production-trusted
-Secure Boot signing path remain outside this result.
+This result does not cover broad physical hardware testing, installation over
+FCoE, or a Secure Boot key trusted for production use.
 
-## Artifact
+## Image tested
 
 | Field | Value |
 | --- | --- |
@@ -30,7 +30,7 @@ The ISO embedded media check and nested ext4 filesystem check passed. All
 118,755 files under staged and shipped `/usr` compared byte-for-byte equal.
 Release RPM and repository signatures were also verified before image build.
 
-## Security Baseline
+## Security checks
 
 The live image and installed system both reported:
 
@@ -47,7 +47,7 @@ The live image and installed system both reported:
 | Crash health | Zero coredumps after stress and reboot |
 | Kernel health | No kernel-critical journal events |
 
-## Adversarial Matrix
+## Attack checks
 
 The unprivileged live-user suite passed all 20 expected outcomes:
 

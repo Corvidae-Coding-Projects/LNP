@@ -3,8 +3,8 @@
 - Notify only when there is a clear story the user can understand or act on.
   Avoid surfacing routine transient-unit churn.
 - Never claim a repair occurred; this daemon is read-only and unprivileged.
-- Preserve rate limits and deduplication so repeated system failures do not
-  train users to dismiss notifications.
+- Keep rate limits and duplicate detection so one problem does not create a
+  flood of notifications.
 - Keep copy calm, specific, non-blaming, and free of raw identifiers when a
   sentence conveys the same information.
 - Service startup must tolerate session-environment timing without silently
