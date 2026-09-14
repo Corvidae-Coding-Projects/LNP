@@ -58,10 +58,20 @@ BORING_UNITS = re.compile(r"^(user@|app-|plasma-|drkonqi|dbus-:)")
 # `key` identifies the story for rate limiting, not the individual event.
 
 
+def journal_text(entry, key):
+    """Return a journal field only when it is usable as text.
+
+    systemd's JSON journal format may represent an unavailable field as null,
+    so dict.get(..., "") alone is not enough to make translator input safe.
+    """
+    value = entry.get(key)
+    return value if isinstance(value, str) else ""
+
+
 
 def t_unit_failure(entry):
-    msg = entry.get("MESSAGE", "")
-    unit = entry.get("UNIT") or entry.get("USER_UNIT") or ""
+    msg = journal_text(entry, "MESSAGE")
+    unit = journal_text(entry, "UNIT") or journal_text(entry, "USER_UNIT")
 
     if "Failed with result" not in msg:
         return None
@@ -87,8 +97,8 @@ def t_unit_failure(entry):
 def t_guard(entry):
     """lnp-guard writes its journal lines to be read; surface the two that a
     person should actually see."""
-    unit = entry.get("_SYSTEMD_UNIT", "")
-    msg = entry.get("MESSAGE", "")
+    unit = journal_text(entry, "_SYSTEMD_UNIT")
+    msg = journal_text(entry, "MESSAGE")
 
     if unit == "lnp-guard-update.service" and "update finished" in msg:
         return (
@@ -110,7 +120,7 @@ def t_guard(entry):
 
 
 def t_oom(entry):
-    msg = entry.get("MESSAGE", "")
+    msg = journal_text(entry, "MESSAGE")
     m = re.search(r"Out of memory: Killed process \d+ \(([^)]+)\)", msg)
     if not m:
         return None

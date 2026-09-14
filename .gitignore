@@ -16,8 +16,42 @@ vendor-staging/
 # Python bytecode, left behind by `python3 -m py_compile` syntax checks.
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+
+# Local configuration and credentials. Keep documented examples in Git.
+.env
+.env.*
+!.env.example
+!.env.*.example
+.direnv/
+
+# Test, profiling, and crash artifacts.
+coverage/
+*.profraw
+core
+core.*
+
+# Logs and temporary files.
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
 
 # Editor and OS noise.
 *~
 *.swp
+.idea/
+.vscode/
+.fleet/
 .DS_Store
+Thumbs.db

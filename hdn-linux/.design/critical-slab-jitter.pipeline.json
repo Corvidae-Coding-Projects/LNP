@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/critical-slab-jitter.md",
+  "doc_hash": "sha256:c4231a7e8f21e5e45b2bc000a88078857daaefbddcb5991b7bb5d6375105fd4f",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

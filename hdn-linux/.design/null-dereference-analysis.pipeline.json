@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/null-dereference-analysis.md",
+  "doc_hash": "sha256:c1c0ac32f293cb9368ca617a2ae895f92b7b2a616098e6612b95f753ebe144aa",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

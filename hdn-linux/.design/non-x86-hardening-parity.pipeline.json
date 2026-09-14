@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/non-x86-hardening-parity.md",
+  "doc_hash": "sha256:d75490368a09b3231602c2a3f6d111cb5904a987f80460417547a4498ac5832f",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

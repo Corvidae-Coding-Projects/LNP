@@ -47,12 +47,12 @@ cmd_codecs() {
         say "Installing the full set of video and audio formats"
         # Fedora ships a limited ffmpeg for patent reasons; swap in the full one.
         dnf swap -y ffmpeg-free ffmpeg --allowerasing \
-            || die "Installing the media formats did not finish. Nothing is broken; try again later."
+            || die "Installing the media formats did not finish. Earlier setup steps may have completed."
     fi
 
     say "Installing extra playback plugins"
     dnf install -y gstreamer1-plugins-ugly gstreamer1-plugins-bad-freeworld \
-        || die "Installing the playback plugins did not finish. Nothing is broken; try again later."
+        || die "Installing the playback plugins did not finish. Earlier setup steps may have completed."
 
     say "Done. Videos and music should now play everywhere."
 }
@@ -67,7 +67,7 @@ cmd_nvidia() {
 
     say "Installing the NVIDIA graphics driver"
     dnf install -y akmod-nvidia \
-        || die "Installing the driver did not finish. Nothing is broken; try again later."
+        || die "Installing the driver did not finish. Earlier setup steps may have completed."
 
     say "Done. The driver finishes preparing in the background;"
     say "restart the computer in about five minutes to start using it."

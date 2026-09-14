@@ -31,8 +31,8 @@ show_menu() {
 
           2   Just try again
 
-          3   Advanced: a command prompt, for whoever
-              helps you with this computer
+          3   Advanced: sign in for a command prompt
+              (requires an account password)
 
         If you do nothing, it tries again in 60 seconds.
 
@@ -65,8 +65,11 @@ case "$choice" in
         ;;
     3)
         echo
+        echo "    Sign in with your account. Administrator commands still need authorization."
         echo "    Type 'exit' when finished to try the desktop again."
-        /usr/bin/bash || true
+        # login authenticates through PAM and starts the account's own shell.
+        # Never use -f (preauthenticated login) or fall back to a root shell.
+        /usr/bin/login || true
         systemctl restart display-manager.service
         ;;
     *)

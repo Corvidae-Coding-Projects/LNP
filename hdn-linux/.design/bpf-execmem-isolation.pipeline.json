@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/bpf-execmem-isolation.md",
+  "doc_hash": "sha256:bb81c0631d64c9b453bee903edf85a0196b92246b1452e48af01d0ef9bf18e04",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

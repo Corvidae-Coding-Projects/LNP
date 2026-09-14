@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/constify.md",
+  "doc_hash": "sha256:75eb2d801007b2abadc0542b13895324a0c5a912c645b4c5c848acf3954cff4d",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

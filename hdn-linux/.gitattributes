@@ -1,0 +1,2 @@
+# Unified-diff context markers are syntax, not source trailing whitespace.
+patches/*.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

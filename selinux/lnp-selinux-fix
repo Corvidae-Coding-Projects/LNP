@@ -33,7 +33,7 @@ valid_path() {
     [[ "$p" != *[\;\&\|\$\`\<\>\(\)\"\\]* ]] || return 1
 }
 
-# --- the four permitted actions --------------------------------------------
+# --- the permitted actions --------------------------------------------------
 
 cmd_setbool() {
     local name="$1" value="$2"
@@ -84,36 +84,6 @@ cmd_fcontext() {
     log "done"
 }
 
-# The risky one. The GUI has already made the user confirm explicitly; this
-# still refuses to guess and logs loudly, because it permits precisely what
-# was blocked.
-cmd_allow_module() {
-    local name="$1"
-    valid_identifier "$name" || die "invalid module name"
-
-    local workdir
-    workdir="$(mktemp -d /tmp/lnp-selinux.XXXXXX)" || die "no temporary directory"
-    # shellcheck disable=SC2064  # expand workdir now, on purpose
-    trap "rm -rf '$workdir'" EXIT
-
-    log "building a permission rule from the recent denials"
-
-    # Only denials from the last ten minutes: whatever the user just saw,
-    # not a sweep of everything the machine has ever refused.
-    if ! ausearch --start recent -m AVC -m USER_AVC --raw > "$workdir/denials.log" 2>/dev/null; then
-        die "could not read the recent security messages"
-    fi
-    [ -s "$workdir/denials.log" ] || die "no recent denials to allow"
-
-    ( cd "$workdir" && audit2allow -M "$name" < denials.log >/dev/null 2>&1 ) \
-        || die "could not build the rule"
-    [ -f "$workdir/$name.pp" ] || die "the rule did not build"
-
-    log "installing the rule"
-    semodule -X 300 -i "$workdir/$name.pp" || die "could not install the rule"
-    log "done. Remove it later with: semodule -X 300 -r $name"
-}
-
 case "${1:-}" in
     setbool)      [ $# -eq 3 ] || die "usage: setbool <name> <on|off>"
                   cmd_setbool "$2" "$3" ;;
@@ -121,7 +91,9 @@ case "${1:-}" in
                   cmd_relabel "$@" ;;
     fcontext)     [ $# -eq 3 ] || die "usage: fcontext <type> <path>"
                   cmd_fcontext "$2" "$3" ;;
-    allow-module) [ $# -eq 2 ] || die "usage: allow-module <name>"
-                  cmd_allow_module "$2" ;;
+    allow-module) [ $# -eq 4 ] || die "usage: allow-module <alert-id> <last-seen> <audit-record>"
+                  # This root-owned helper independently fetches the selected
+                  # alert and compares it to what the user saw. No log sweep.
+                  exec /usr/libexec/lnp-selinux-policy "$2" "$3" "$4" ;;
     *)            die "unknown action" ;;
 esac

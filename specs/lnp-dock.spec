@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 
 Name:           lnp-dock
-Version:        0.5.4
+Version:        0.5.5
 Release:        1%{?dist}
 Summary:        Dock for Linux for Normal People
 
@@ -68,6 +68,12 @@ install -Dpm 0644 81-lnp-dock.preset %{buildroot}%{_userpresetdir}/81-lnp-dock.p
 %{_userpresetdir}/81-lnp-dock.preset
 
 %changelog
+* Sat Aug 15 2026 LNP Project <lnp@example.invalid> - 0.5.5-1
+- Fix autostart ordering. The service was wanted by plasma-workspace.target
+  but ordered after graphical-session.target; Plasma orders its workspace
+  before the graphical-session target, so systemd deleted the dock's start
+  job to break the cycle.
+
 * Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.5.4-1
 - Start reliably after a reboot. ConditionEnvironment=WAYLAND_DISPLAY was
   evaluated once, before Plasma had imported the variable into the systemd

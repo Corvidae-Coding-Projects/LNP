@@ -1,0 +1,111 @@
+#!/usr/bin/python3 -I
+"""Generate a permission module from one independently verified alert record.
+
+Called as root by lnp-selinux-fix after polkit authorization. Caller-supplied
+audit text is only an expected value: compiler input comes from the system
+setroubleshoot service, after an exact comparison. No audit-log search occurs.
+"""
+
+import hashlib
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import syslog
+import tempfile
+
+
+ALERT_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+RECORD = re.compile(r"type=(?:AVC|USER_AVC|1400|1107) msg=audit\([0-9]+\.[0-9]+:[0-9]+\): [^\n\r\x00]+")
+DENIAL_PREFIXES = ("type=AVC ", "type=USER_AVC ", "type=1400 ", "type=1107 ")
+
+
+def load_alert(alert_id):
+    import dbus
+
+    bus = dbus.SystemBus()
+    proxy = bus.get_object(
+        "org.fedoraproject.Setroubleshootd", "/org/fedoraproject/Setroubleshootd"
+    )
+    service = dbus.Interface(proxy, "org.fedoraproject.SetroubleshootdIface")
+    return service.get_alert(alert_id, timeout=30)
+
+
+def validate_request(alert_id, last_seen, expected_record):
+    if not ALERT_ID.fullmatch(alert_id):
+        raise ValueError("Invalid alert ID.")
+    if not re.fullmatch(r"[0-9]{1,20}", last_seen):
+        raise ValueError("Invalid alert date.")
+    if not 0 < len(expected_record.encode("utf-8")) <= 16384:
+        raise ValueError("Invalid security record size.")
+
+
+def selected_record(alert, alert_id, last_seen, expected_record):
+    if len(alert) != 8 or str(alert[0]) != alert_id or int(alert[6]) != int(last_seen):
+        raise ValueError("This alert changed. Refresh Security Alerts and review it again.")
+    # get_alert returns a complete audit event, sometimes shared by multiple
+    # alerts. Without a typed signature in this API, multiple AVC records are
+    # ambiguous. Do not silently turn them into a combined permission module.
+    denials = [str(record) for record in alert[3] if str(record).startswith(DENIAL_PREFIXES)]
+    if len(denials) != 1:
+        raise ValueError("This alert does not identify one unambiguous denial. Ask for help reviewing its details.")
+    record = denials[0]
+    if record != expected_record:
+        raise ValueError("The displayed security record changed. Refresh Security Alerts and review it again.")
+    line = record.removesuffix("\n")
+    if not RECORD.fullmatch(line) or not re.search(r"\bavc:\s+denied\s+\{[^{}]+\}", line):
+        raise ValueError("The selected record is not a supported access denial.")
+    return record
+
+
+def run_checked(args, *, cwd, input=None):
+    result = subprocess.run(
+        args, input=input, text=True, capture_output=True, cwd=cwd,
+        timeout=120, check=False,
+    )
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"{Path(args[0]).name} did not finish. {detail}")
+
+
+def apply_policy(alert_id, last_seen, expected_record):
+    validate_request(alert_id, last_seen, expected_record)
+    record = selected_record(load_alert(alert_id), alert_id, last_seen, expected_record)
+    # Derive the name ourselves; a caller cannot replace an arbitrary policy
+    # module by supplying its name. Repeating this exact fix is idempotent.
+    digest = hashlib.sha256(record.encode("utf-8")).hexdigest()[:16]
+    name = f"lnp_alert_{alert_id.lower().replace('-', '')}_{digest}"
+    with tempfile.TemporaryDirectory(prefix="lnp-selinux-", dir="/tmp") as directory:
+        workdir = Path(directory)
+        # -N avoids reference-policy macros that can add unrelated access.
+        # Input is ONLY the independently fetched denial, never caller text
+        # and never the full event or any window of recent audit-log entries.
+        run_checked(["/usr/bin/audit2allow", "-N", "-M", name], cwd=workdir, input=record)
+        package = workdir / f"{name}.pp"
+        if not package.is_file() or package.stat().st_size == 0:
+            raise RuntimeError("The permission rule did not build; no policy was installed.")
+        selected_record(load_alert(alert_id), alert_id, last_seen, expected_record)
+        run_checked(["/usr/sbin/semodule", "-X", "300", "-i", str(package)], cwd=workdir)
+    syslog.syslog(syslog.LOG_NOTICE, f"lnp-selinux: installed {name} for alert {alert_id}")
+    return name
+
+
+def main():
+    if os.geteuid() != 0:
+        print("This operation requires administrator authorization.", file=sys.stderr)
+        return 1
+    if len(sys.argv) != 4:
+        print("usage: lnp-selinux-policy <alert-id> <last-seen> <audit-record>", file=sys.stderr)
+        return 2
+    try:
+        name = apply_policy(*sys.argv[1:])
+    except Exception as error:
+        print(f"lnp-selinux-policy: {error}", file=sys.stderr)
+        return 1
+    print(f"Installed permission rule {name}. Remove it with: semodule -X 300 -r {name}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

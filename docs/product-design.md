@@ -1,5 +1,10 @@
 # Linux for Normal People: Product and Safety Design Specification
 
+Implementation amendment (2026-09-13):
+[Custom SELinux policy generation](selinux-policy-generation.md) supersedes
+this document's instructions to remove that feature. It is retained with
+verified alert scope, explicit confirmation, and administrator authentication.
+
 | Field | Value |
 | --- | --- |
 | Status | Proposed product contract; implementation is not yet conformant |

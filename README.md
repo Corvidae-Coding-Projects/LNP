@@ -71,6 +71,16 @@ $ lnp-apply-layout --force     # re-apply even if the stamp says it is current
 $ lnp-apply-layout --revert    # restore the most recent backup
 ```
 
+Restoring pauses automatic layout application, including at later logins and
+layout updates. Use `--force`, or “Apply the LNP desktop layout” in Welcome,
+to apply LNP again and resume automatic application.
+
+New backups record both saved files and files that were absent, so reverting
+also removes configuration files created by the applier. Older backups lack
+that record: their saved files can be restored, but files with no saved copy
+are left in place. Failed backups stop application and never replace the latest
+completed backup.
+
 ## Product and safety design
 
 The authoritative design package is

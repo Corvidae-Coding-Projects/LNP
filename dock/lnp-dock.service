@@ -3,9 +3,12 @@ Description=LNP Dock
 
 # Ordering after plasmashell is what guarantees a usable session: by the time
 # the shell is up, the compositor is running and Plasma has imported
-# WAYLAND_DISPLAY into the systemd user manager.
+# WAYLAND_DISPLAY into the systemd user manager. Do not order this unit after
+# graphical-session.target: plasma-workspace.target is explicitly Before that
+# target, while also waiting for every unit it Wants. That creates a cycle and
+# systemd resolves it by deleting this unit's start job.
 PartOf=graphical-session.target
-After=graphical-session.target plasma-plasmashell.service
+After=plasma-plasmashell.service
 
 # Deliberately NO ConditionEnvironment=WAYLAND_DISPLAY.
 #

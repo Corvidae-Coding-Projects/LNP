@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/latent-entropy.md",
+  "doc_hash": "sha256:d96398ef6375d9f2e7f217fb4fea0dbccdb9e3582900a1e32cda877b27624a87",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

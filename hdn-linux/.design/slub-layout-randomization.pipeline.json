@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/slub-layout-randomization.md",
+  "doc_hash": "sha256:9bc4f35183db51e9b78b30b578e6d20fd90c9c4eca29343089a68869af74f367",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

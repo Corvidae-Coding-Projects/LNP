@@ -15,9 +15,8 @@
 //!   purpose. Documented, reversible, bounded.
 //! * `Fcontext` records a new expected label for a path, then applies it.
 //!   Narrow, but it does change policy expectations.
-//! * `CustomModule` compiles a rule permitting precisely what was denied.
-//!   That is the one fix that could wave through a real attack, so it is
-//!   never one-click: the UI demands explicit confirmation and says why.
+//! * `CustomModule` generates policy from the denial displayed in one alert.
+//!   The privileged helper re-fetches that alert and verifies the exact record.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Fix {
@@ -27,8 +26,7 @@ pub enum Fix {
     Restorecon { path: String, recursive: bool },
     /// semanage fcontext -a -t <setype> '<path>' ; restorecon -v '<path>'
     Fcontext { setype: String, path: String },
-    /// ausearch ... | audit2allow -M <name> ; semodule -X 300 -i <name>.pp
-    CustomModule { name: String },
+    CustomModule { alert_id: String, last_seen: u64, audit_record: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -37,7 +35,7 @@ pub enum Risk {
     Safe,
     /// A supported, reversible policy switch or narrow labelling rule.
     Moderate,
-    /// Permits exactly what was blocked. Requires explicit confirmation.
+    /// A persistent type-based permission rule. Requires explicit confirmation.
     High,
 }
 
@@ -84,11 +82,10 @@ impl Fix {
                  applies it. Affects only that location."
             ),
             Fix::CustomModule { .. } =>
-                "Writes a permanent rule allowing exactly what was blocked. \
-                 Only do this if you know the program was doing something you \
-                 asked for. If you do not recognise it, the block may have \
-                 stopped something harmful -- leave it alone and ask for help."
-                    .into(),
+                "Creates a permanent permission rule from the denial shown in this alert. \
+                 SELinux rules apply to security types, so other programs and files with \
+                 those same types may also gain this access. Only continue if this was \
+                 something you intended to allow.".into(),
         }
     }
 
@@ -112,7 +109,9 @@ impl Fix {
             Fix::Fcontext { setype, path } => {
                 vec!["fcontext".into(), setype.clone(), path.clone()]
             }
-            Fix::CustomModule { name } => vec!["allow-module".into(), name.clone()],
+            Fix::CustomModule { alert_id, last_seen, audit_record } => vec![
+                "allow-module".into(), alert_id.clone(), last_seen.to_string(), audit_record.clone(),
+            ],
         }
     }
 }
@@ -146,6 +145,29 @@ fn valid_path(s: &str) -> bool {
 
 fn unquote(s: &str) -> &str {
     s.trim().trim_matches('\'').trim_matches('"')
+}
+
+/// Custom policy needs trusted alert context, not merely a suggested module
+/// name. Multiple denial records are ambiguous in this API: get_alert returns
+/// the entire audit event, which can contain denials for different alerts.
+pub fn parse_alert_fixes(text: &str, alert_id: &str, last_seen: u64, audit: &[String]) -> Vec<Fix> {
+    let mut fixes = parse_do_text(text);
+    let suggests_module = text.lines().any(|line| {
+        let tokens: Vec<_> = line.split_whitespace().collect();
+        tokens.windows(3).any(|parts| {
+            parts[0] == "audit2allow" && parts[1] == "-M" && valid_identifier(unquote(parts[2]))
+        })
+    });
+    let denials: Vec<_> = audit.iter().filter(|record| {
+        ["type=AVC ", "type=USER_AVC ", "type=1400 ", "type=1107 "]
+            .iter().any(|prefix| record.starts_with(prefix))
+    }).collect();
+    if suggests_module && denials.len() == 1 && !alert_id.is_empty() {
+        fixes.push(Fix::CustomModule {
+            alert_id: alert_id.into(), last_seen, audit_record: denials[0].clone(),
+        });
+    }
+    fixes
 }
 
 /// Extract every action we recognise from a suggestion blob.
@@ -220,19 +242,6 @@ pub fn parse_do_text(text: &str) -> Vec<Fix> {
             continue;
         }
 
-        if let Some(pos) = tokens.iter().position(|t| *t == "audit2allow") {
-            // ... | audit2allow -M my-name
-            if let Some(name) = tokens.get(pos + 1..).and_then(|rest| {
-                rest.iter()
-                    .position(|t| *t == "-M")
-                    .and_then(|i| rest.get(i + 1))
-            }) {
-                let name = unquote(name);
-                if valid_identifier(name) && !out.iter().any(|f| matches!(f, Fix::CustomModule { .. })) {
-                    out.push(Fix::CustomModule { name: name.to_string() });
-                }
-            }
-        }
     }
 
     out
@@ -274,13 +283,22 @@ mod tests {
     }
 
     #[test]
-    fn parses_the_catchall_module_and_grades_it_high() {
+    fn custom_policy_requires_selected_alert_context() {
         let t = "Allow this access for now by executing:\n\
                  # ausearch -c '(cat)' --raw | audit2allow -M my-cat\n\
                  # semodule -X 300 -i my-cat.pp\n";
-        let fixes = parse_do_text(t);
-        assert_eq!(fixes, vec![Fix::CustomModule { name: "my-cat".into() }]);
-        assert_eq!(fixes[0].risk(), Risk::High, "must never be one-click");
+        assert!(parse_do_text(t).is_empty());
+        assert!(parse_do_text("# audit2allow -M local-policy").is_empty());
+        assert!(parse_do_text("# semodule -i local-policy.pp").is_empty());
+        let audit = vec!["type=AVC msg=audit(1.2:3): avc: denied { read } for test\n".into()];
+        let fixes = parse_alert_fixes(t, "selected-alert", 42, &audit);
+        assert_eq!(fixes, vec![Fix::CustomModule {
+            alert_id: "selected-alert".into(), last_seen: 42, audit_record: audit[0].clone(),
+        }]);
+        assert_eq!(fixes[0].risk(), Risk::High);
+        assert_eq!(fixes[0].helper_args(), vec!["allow-module", "selected-alert", "42", &audit[0]]);
+        assert!(parse_alert_fixes(t, "selected-alert", 42, &[]).is_empty());
+        assert!(parse_alert_fixes(t, "selected-alert", 42, &[audit[0].clone(), audit[0].clone()]).is_empty());
     }
 
     #[test]
@@ -302,7 +320,7 @@ mod tests {
                     Fix::Fcontext { setype, path } => {
                         assert!(valid_identifier(setype) && valid_path(path), "{evil}")
                     }
-                    Fix::CustomModule { name } => assert!(valid_identifier(name), "{evil}"),
+                    Fix::CustomModule { .. } => panic!("custom policy requires alert context"),
                 }
             }
         }

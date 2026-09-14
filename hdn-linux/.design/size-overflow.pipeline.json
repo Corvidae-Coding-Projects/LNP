@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/size-overflow.md",
+  "doc_hash": "sha256:7f0f724e1208d143a17dd4aa9ed5166cb5a4ca361a7cd28b88698d39eb0355b9",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

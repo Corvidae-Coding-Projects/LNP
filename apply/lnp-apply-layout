@@ -17,6 +17,7 @@ readonly LNP_ID="org.lnp.desktop"
 readonly VERSION_FILE="/usr/share/lnp/layout-version"
 readonly STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/lnp"
 readonly STAMP="${STATE_DIR}/applied-version"
+readonly AUTO_APPLY_DISABLED="${STATE_DIR}/auto-apply-disabled"
 readonly CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}"
 
 # Everything the apply path can plausibly disturb.
@@ -37,9 +38,9 @@ usage() {
     cat <<'EOF'
 Usage: lnp-apply-layout [--force|--revert|--status|--help]
 
-  (no args)  Apply the LNP layout, unless the stamp says it is already applied.
-  --force    Apply even if the stamp says it is already applied.
-  --revert   Restore the most recent backup taken before an apply.
+  (no args)  Apply unless already current or automatic application is paused.
+  --force    Apply explicitly and resume automatic layout updates on success.
+  --revert   Restore the latest backup and pause automatic layout application.
   --status   Report shipped version, applied version and available backups.
 
 Applying rebuilds the Plasma panel layout. The previous configuration is
@@ -61,19 +62,46 @@ applied_version() {
     tr -d '[:space:]' < "$STAMP"
 }
 
+lock_state() {
+    mkdir -p "$STATE_DIR" || die "could not create ${STATE_DIR}"
+    exec 9>"${STATE_DIR}/layout.lock" || die "could not open the layout lock"
+    flock -x 9 || die "could not lock the layout state"
+}
+
 take_backup() {
     local dir
-    dir="${STATE_DIR}/backup-$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$dir" || die "could not create backup directory ${dir}"
+    dir=$(mktemp -d "${STATE_DIR}/.backup-$(date +%Y%m%d-%H%M%S).XXXXXX") \
+        || die "could not create a backup directory"
+
+    # A manifest records absence explicitly. Without it, restore cannot tell
+    # a newly created config file from a file lost out of an incomplete backup.
+    printf '1\n' > "$dir/backup-format" || die "could not write backup metadata"
+    : > "$dir/manifest" || die "could not create backup manifest"
 
     local f saved=0
     for f in "${BACKED_UP_FILES[@]}"; do
-        if [ -f "${CONFIG_DIR}/${f}" ]; then
-            cp -a "${CONFIG_DIR}/${f}" "${dir}/" && saved=$(( saved + 1 ))
+        if [ -f "${CONFIG_DIR}/${f}" ] || [ -L "${CONFIG_DIR}/${f}" ]; then
+            cp -a -- "${CONFIG_DIR}/${f}" "${dir}/" \
+                || die "backup failed for ${f}; layout was not applied (partial copy: ${dir})"
+            printf 'present %s\n' "$f" >> "$dir/manifest" \
+                || die "could not record backup of ${f}; layout was not applied"
+            saved=$(( saved + 1 ))
+        elif [ -e "${CONFIG_DIR}/${f}" ]; then
+            die "${CONFIG_DIR}/${f} is not a configuration file; layout was not applied"
+        else
+            printf 'absent %s\n' "$f" >> "$dir/manifest" \
+                || die "could not record absence of ${f}; layout was not applied"
         fi
     done
 
-    ln -sfn "$dir" "${STATE_DIR}/backup-latest"
+    # Publish only complete backups, using unique names even within one second.
+    local complete="${STATE_DIR}/${dir##*/.}"
+    mv -T -- "$dir" "$complete" || die "could not finish the backup; layout was not applied"
+    dir="$complete"
+    if ! ln -s -- "$dir" "$dir/latest-link" \
+        || ! mv -Tf -- "$dir/latest-link" "${STATE_DIR}/backup-latest"; then
+        die "could not publish the backup; layout was not applied"
+    fi
     log "backed up ${saved} file(s) to ${dir}"
 }
 
@@ -159,6 +187,12 @@ configure_touchpads() {
 
 do_apply() {
     local force="$1"
+    lock_state
+
+    if [ "$force" != "yes" ] && [ -e "$AUTO_APPLY_DISABLED" ]; then
+        log "automatic layout application is paused after restore; use --force to apply LNP again"
+        return 0
+    fi
 
     local shipped
     shipped=$(shipped_version) || { log "no shipped version file at ${VERSION_FILE}; nothing to do"; exit 0; }
@@ -176,7 +210,6 @@ do_apply() {
         exit 0
     fi
 
-    mkdir -p "$STATE_DIR" || die "could not create ${STATE_DIR}"
     take_backup
 
     log "applying look-and-feel ${LNP_ID} (layout ${shipped})"
@@ -186,24 +219,67 @@ do_apply() {
 
     configure_touchpads
 
-    printf '%s\n' "$shipped" > "$STAMP"
+    if ! printf '%s\n' "$shipped" > "${STAMP}.tmp" \
+        || ! mv -f -- "${STAMP}.tmp" "$STAMP"; then
+        die "layout applied, but could not save its version"
+    fi
+    rm -f -- "$AUTO_APPLY_DISABLED" || die "layout applied, but automatic application is still paused"
     log "applied. Revert with: lnp-apply-layout --revert"
 }
 
 do_revert() {
+    lock_state
     local latest="${STATE_DIR}/backup-latest"
     [ -d "$latest" ] || die "no backup found at ${latest}"
 
-    local f restored=0
+    local f i=0 restored=0
+    local -a manifest=()
+    if [ -e "$latest/backup-format" ] || [ -e "$latest/manifest" ]; then
+        [ "$(cat "$latest/backup-format")" = "1" ] || die "unsupported backup format"
+        mapfile -t manifest < "$latest/manifest" || die "could not read backup manifest"
+        [ "${#manifest[@]}" -eq "${#BACKED_UP_FILES[@]}" ] || die "incomplete backup manifest"
+        # Validate the whole backup before changing any configuration.
+        for f in "${BACKED_UP_FILES[@]}"; do
+            case "${manifest[$i]}" in
+                "present $f")
+                    [ -f "$latest/$f" ] || [ -L "$latest/$f" ] \
+                        || die "backup is missing ${f}; nothing was restored"
+                    ;;
+                "absent $f")
+                    [ ! -e "$latest/$f" ] && [ ! -L "$latest/$f" ] \
+                        || die "backup manifest conflicts with ${f}; nothing was restored"
+                    ;;
+                *) die "invalid backup manifest; nothing was restored" ;;
+            esac
+            i=$(( i + 1 ))
+        done
+    else
+        # Older releases did not record absence. Restore their saved files,
+        # but never guess which missing files are safe to remove.
+        log "legacy backup: files without a saved copy will be left in place"
+    fi
+
+    mkdir -p "$CONFIG_DIR" || die "could not create ${CONFIG_DIR}"
+    # Preserve the user's opt-out even if restoration is interrupted or a
+    # later copy fails. Only a successful explicit --force clears it.
+    : > "$AUTO_APPLY_DISABLED" || die "could not pause automatic application; nothing was restored"
+    i=0
     for f in "${BACKED_UP_FILES[@]}"; do
-        if [ -f "${latest}/${f}" ]; then
-            cp -a "${latest}/${f}" "${CONFIG_DIR}/" && restored=$(( restored + 1 ))
+        if [ -f "${latest}/${f}" ] || [ -L "${latest}/${f}" ]; then
+            cp -a --remove-destination -- "${latest}/${f}" "${CONFIG_DIR}/${f}" \
+                || die "could not restore ${f}; restore is incomplete, backup is kept"
+            restored=$(( restored + 1 ))
+        elif [ "${manifest[$i]:-}" = "absent $f" ]; then
+            rm -f -- "${CONFIG_DIR}/${f}" \
+                || die "could not remove new configuration ${f}; restore is incomplete, backup is kept"
         fi
+        i=$(( i + 1 ))
     done
 
-    rm -f "$STAMP"
+    rm -f -- "$STAMP" || die "configuration restored, but could not remove the applied version"
     log "restored ${restored} file(s) from ${latest}"
     log "log out and back in for the restored layout to take effect"
+    log "automatic application is paused; apply LNP again with --force"
 }
 
 do_status() {
@@ -213,6 +289,7 @@ do_status() {
 
     printf 'shipped layout version : %s\n' "$shipped"
     printf 'applied layout version : %s\n' "$applied"
+    printf 'automatic application  : %s\n' "$(if [ -e "$AUTO_APPLY_DISABLED" ]; then echo paused; else echo enabled; fi)"
     printf 'plasma session running : %s\n' "$(in_plasma_session && echo yes || echo no)"
     printf 'backups:\n'
     if [ -d "$STATE_DIR" ]; then
@@ -220,11 +297,17 @@ do_status() {
     fi
 }
 
-case "${1:-}" in
-    "")         do_apply no ;;
-    --force)    do_apply yes ;;
-    --revert)   do_revert ;;
-    --status)   do_status ;;
-    -h|--help)  usage ;;
-    *)          usage; exit 2 ;;
-esac
+main() {
+    case "${1:-}" in
+        "")         do_apply no ;;
+        --force)    do_apply yes ;;
+        --revert)   do_revert ;;
+        --status)   do_status ;;
+        -h|--help)  usage ;;
+        *)          usage; return 2 ;;
+    esac
+}
+
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
+    main "$@"
+fi

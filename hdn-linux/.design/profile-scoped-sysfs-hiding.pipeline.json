@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/profile-scoped-sysfs-hiding.md",
+  "doc_hash": "sha256:12733c26193dc071880fb69874ad05d6b997cd1606a171a8527e4ab68142a1a7",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

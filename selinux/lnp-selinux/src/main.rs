@@ -225,8 +225,7 @@ struct App {
     alerts: Vec<SecurityAlert>,
     error: Option<String>,
     expanded: Option<String>,
-    /// A high-risk fix awaiting explicit confirmation.
-    confirming: Option<Fix>,
+    confirming: Option<(Fix, String)>,
     busy: bool,
     outcome: Option<FixOutcome>,
     tx: Sender<FixOutcome>,
@@ -331,30 +330,28 @@ impl eframe::App for App {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
 
-        // Confirmation for the one fix that could matter.
-        if let Some(fix) = self.confirming.clone() {
-            egui::Window::new("Are you sure?")
+        if let Some((fix, summary)) = self.confirming.clone() {
+            egui::Window::new("Allow this permanently?")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.set_max_width(460.0);
+                    ui.set_max_width(500.0);
+                    ui.label(&summary);
+                    ui.add_space(8.0);
                     ui.label(fix.explanation());
-                    ui.add_space(12.0);
+                    if let Fix::CustomModule { audit_record, .. } = &fix {
+                        ui.collapsing("Selected security record", |ui| {
+                            ui.label(egui::RichText::new(audit_record).monospace());
+                        });
+                    }
                     ui.horizontal(|ui| {
                         if ui.button("Cancel").clicked() {
                             self.confirming = None;
                         }
-                        if ui
-                            .button(
-                                egui::RichText::new("Allow permanently")
-                                    .color(risk_colour(Risk::High)),
-                            )
-                            .clicked()
-                        {
-                            let f = fix.clone();
+                        if ui.add_enabled(!self.busy, egui::Button::new("Allow permanently")).clicked() {
                             self.confirming = None;
-                            self.apply(&f);
+                            self.apply(&fix);
                         }
                     });
                 });
@@ -382,7 +379,7 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ui, |ui| {
             if let Some(err) = self.error.clone() {
-                ui.colored_label(risk_colour(Risk::High), err);
+                ui.colored_label(ui.visuals().error_fg_color, err);
                 return;
             }
 
@@ -403,9 +400,9 @@ impl eframe::App for App {
                 }
                 Some(FixOutcome::Failed(msg)) => {
                     ui.colored_label(
-                        risk_colour(Risk::High),
+                        ui.visuals().error_fg_color,
                         format!(
-                            "That didn't work, and nothing was changed. {}",
+                            "The fix did not finish. Some changes may already have been made. {}",
                             first_line(msg)
                         ),
                     );
@@ -478,13 +475,13 @@ impl App {
             }
 
             for fix in &seen {
-                let enabled = !self.busy;
+                let enabled = !self.busy && self.confirming.is_none();
                 let button = egui::Button::new(
                     egui::RichText::new(fix.button_label()).color(risk_colour(fix.risk())),
                 );
                 if ui.add_enabled(enabled, button).clicked() {
                     if fix.risk() == Risk::High {
-                        self.confirming = Some(fix.clone());
+                        self.confirming = Some((fix.clone(), alert.plain_summary()));
                     } else {
                         self.apply(fix);
                     }

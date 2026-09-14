@@ -1,0 +1,7 @@
+**
+!verification/
+verification/**
+!verification/Containerfile
+!verification/bin/
+verification/bin/**
+!verification/bin/tlc

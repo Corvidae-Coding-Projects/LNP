@@ -2,7 +2,7 @@
 
 Name:           lnp-selinux
 Version:        0.1.0
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        Security Alerts -- plain-language SELinux denials with one-click fixes
 
 License:        GPL-3.0-or-later
@@ -20,6 +20,8 @@ BuildRequires:  systemd-rpm-macros
 # hard requirement rather than a suggestion.
 Requires:       setroubleshoot-server
 Requires:       polkit
+Requires:       python3
+Requires:       python3-dbus
 # The fix helper's tools.
 Requires:       policycoreutils
 Requires:       policycoreutils-python-utils
@@ -32,10 +34,11 @@ what happened in ordinary words and offers the remedy as a button.
 
 setroubleshoot's suggested shell commands are never executed. They are parsed
 into a closed set of four validated actions -- repair a file's label, flip a
-documented policy switch, record a file type, or build a permission rule --
+documented policy switch, record a file type, or generate a permission rule --
 and applied by a privileged helper that validates them independently. Actions
-are graded by risk; the one that permits exactly what was blocked is never a
-single click and says plainly why.
+are graded by risk. Custom policy generation requires explicit confirmation
+and administrator authorization. The helper re-fetches the selected alert and
+requires the displayed denial to match exactly; it never scans recent denials.
 
 A background service turns each new alert into a calm desktop notification
 with a button that opens the window.
@@ -49,6 +52,7 @@ cargo build --release --offline
 %install
 install -Dpm 0755 target/release/lnp-selinux %{buildroot}%{_bindir}/lnp-selinux
 install -Dpm 0755 lnp-selinux-fix %{buildroot}%{_libexecdir}/lnp-selinux-fix
+install -Dpm 0755 lnp-selinux-policy %{buildroot}%{_libexecdir}/lnp-selinux-policy
 install -Dpm 0644 org.lnp.selinux.policy %{buildroot}%{_datadir}/polkit-1/actions/org.lnp.selinux.policy
 install -Dpm 0644 lnp-selinux.desktop %{buildroot}%{_datadir}/applications/lnp-selinux.desktop
 install -Dpm 0644 lnp-selinux-watch.service %{buildroot}%{_userunitdir}/lnp-selinux-watch.service
@@ -66,12 +70,17 @@ systemctl enable --now setroubleshootd.service >/dev/null 2>&1 || :
 %license LICENSE
 %{_bindir}/lnp-selinux
 %{_libexecdir}/lnp-selinux-fix
+%{_libexecdir}/lnp-selinux-policy
 %{_datadir}/polkit-1/actions/org.lnp.selinux.policy
 %{_datadir}/applications/lnp-selinux.desktop
 %{_userunitdir}/lnp-selinux-watch.service
 %{_userpresetdir}/83-lnp-selinux.preset
 
 %changelog
+* Sat Aug 15 2026 LNP Project <lnp@example.invalid> - 0.1.0-5
+- Fix the watcher service's Plasma startup ordering cycle by ordering it after
+  plasmashell rather than graphical-session.target.
+
 * Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.1.0-4
 - Actually ship the watcher unit without ConditionEnvironment; the 0.1.0-3
   build packaged a stale copy.

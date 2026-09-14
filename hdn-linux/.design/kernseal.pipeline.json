@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/kernseal.md",
+  "doc_hash": "sha256:6faeecec18fefd48bc84985db5cf7a519cb4477341d4eec64c4139e495e7f1a3",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

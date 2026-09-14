@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/private-kernel-stacks.md",
+  "doc_hash": "sha256:cdd10d8a3bdd5ff80eff8567919bd1de88fd4e70746b96faed3d9d0eefb710c8",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

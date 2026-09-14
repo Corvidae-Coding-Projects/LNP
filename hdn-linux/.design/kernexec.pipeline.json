@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/kernexec.md",
+  "doc_hash": "sha256:1e11a93f2f1ed52bbd7a8602818228e5be9c326c91fdad09273776f316eaf6f4",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

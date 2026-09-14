@@ -9,7 +9,7 @@
 
 Name:           lnp
 Version:        0.3.0
-Release:        6%{?dist}
+Release:        8%{?dist}
 Summary:        Linux for Normal People -- sane desktop defaults for Plasma
 
 License:        GPL-3.0-or-later
@@ -122,6 +122,8 @@ prompt if the desktop fails to start.
 %package -n lnp-recovery
 Summary:        Plain-language recovery when the desktop cannot start
 Requires:       btrfs-progs
+# Authenticated console login for the support option.
+Requires:       /usr/bin/login
 %{?systemd_requires}
 
 %description -n lnp-recovery
@@ -158,6 +160,8 @@ Requires:       plasma-workspace
 Requires:       kf6-kconfig
 # pgrep, for detecting a live session
 Requires:       procps-ng
+# Serialize application and restoration of per-user configuration.
+Requires:       /usr/bin/flock
 %{?systemd_requires}
 
 %description -n lnp-apply
@@ -310,6 +314,14 @@ install -Dpm 0644 welcome/lnp-welcome-autostart.desktop %{buildroot}%{_sysconfdi
 
 
 %changelog
+* Sat Aug 15 2026 LNP Project <lnp@example.invalid> - 0.3.0-8
+- Make the error notification daemon tolerate null and non-text journal fields
+  instead of crashing and restarting on malformed entries.
+
+* Sat Aug 15 2026 LNP Project <lnp@example.invalid> - 0.3.0-7
+- Fix the error notification service's Plasma startup ordering cycle by
+  ordering it after plasmashell rather than graphical-session.target.
+
 * Fri Aug 07 2026 LNP Project <lnp@example.invalid> - 0.3.0-6
 - apply: drop ConditionEnvironment=XDG_CURRENT_DESKTOP too. Same silent
   skip as the other units; the applier already detects a live plasmashell

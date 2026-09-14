@@ -168,13 +168,22 @@ class ActionPage(QWizardPage):
             if line.startswith("==> "):
                 self.status.setText(line[4:])
 
-    def on_finished(self, code: int, _status):
+    def on_finished(self, code: int, exit_status):
+        if self.proc is not None:
+            self.on_output()
         log_text = self.log.toPlainText()
+        authorization_failed = (
+            exit_status == QProcess.ExitStatus.NormalExit
+            and code in (126, 127)
+            and not any(line.startswith("==> ") for line in log_text.splitlines())
+        )
 
-        if code == 0:
+        if code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
             self.status.setText("✓ " + self.done_text)
             self.button.setVisible(False)
-        elif "authentication agent" in log_text or "controlling terminal" in log_text:
+        elif authorization_failed and (
+            "authentication agent" in log_text or "controlling terminal" in log_text
+        ):
             # polkit could not show a password dialog at all. Distinct from a
             # wrong or missing password, and telling the user it was their
             # password would be a lie.
@@ -184,7 +193,7 @@ class ActionPage(QWizardPage):
                 "this again."
             )
             self.button.setEnabled(True)
-        elif code in (126, 127):
+        elif authorization_failed:
             # pkexec: dialog dismissed / wrong password.
             self.status.setText(
                 "That needs the administrator password, and it wasn't entered. "
@@ -193,9 +202,9 @@ class ActionPage(QWizardPage):
             self.button.setEnabled(True)
         else:
             self.status.setText(
-                "Something didn't finish, and nothing on your computer was changed. "
-                "Check the internet connection and try again. If it keeps happening, "
-                "the details below will help someone help you."
+                "Setup did not finish. Some changes may already have been made. "
+                "Open the details below to see which steps completed and what failed. "
+                "You can retry; completed steps may remain in place."
             )
             if not self.log.isVisible():
                 self.toggle_details()
@@ -227,6 +236,10 @@ class WelcomePage(QWizardPage):
         self.dock_toggle.toggled.connect(self.toggle_dock)
         layout.addWidget(self.dock_toggle)
 
+        apply_layout = QPushButton("Apply the LNP desktop layout…")
+        apply_layout.clicked.connect(self.apply_layout)
+        layout.addWidget(apply_layout)
+
         layout.addStretch(1)
 
         if state["have_backup"]:
@@ -247,11 +260,31 @@ class WelcomePage(QWizardPage):
         verb = "enable" if on else "disable"
         _run(["systemctl", "--user", verb, "--now", "lnp-dock.service"])
 
+    def apply_layout(self):
+        answer = QMessageBox.question(
+            self,
+            "Apply the LNP desktop layout?",
+            "This rebuilds your desktop panels and saves a backup first. "
+            "It also resumes automatic LNP layout updates at login.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        result = _run(["lnp-apply-layout", "--force"])
+        if result.returncode == 0:
+            QMessageBox.information(self, "LNP layout applied", "The LNP layout is ready.")
+        else:
+            QMessageBox.warning(
+                self, "Layout did not finish",
+                "The LNP layout could not be fully applied. "
+                "Any completed backup is kept.\n\n" + result.stderr.strip(),
+            )
+
     def restore(self):
         answer = QMessageBox.question(
             self,
             "Restore your old desktop?",
-            "This puts your desktop back exactly how it was before LNP. "
+            "This restores your saved desktop configuration and pauses automatic "
+            "LNP layout updates. Older backups may leave some newer settings in place. "
             "The change finishes the next time you log in.\n\n"
             "You can come back to the LNP desktop later from this app.",
         )
@@ -277,8 +310,9 @@ class WelcomePage(QWizardPage):
             QMessageBox.warning(
                 self,
                 "That didn't work",
-                "The saved copy of your old desktop couldn't be restored. "
-                "Nothing was changed.",
+                "The saved copy of your old desktop couldn't be fully restored. "
+                "Some settings may already have been restored. The backup is kept.\n\n"
+                + result.stderr.strip(),
             )
 
 

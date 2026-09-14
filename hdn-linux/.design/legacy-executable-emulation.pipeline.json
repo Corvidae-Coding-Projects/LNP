@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/legacy-executable-emulation.md",
+  "doc_hash": "sha256:461718d5b4b0a5ab88d7768d56119898fe5dae1815a43e558e8ae36199773d5a",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

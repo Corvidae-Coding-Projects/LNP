@@ -135,7 +135,7 @@ pub fn load_one(
         .into_iter()
         .map(
             |(if_text, then_text, do_text, analysis_id, _fixable, _bug, _prio)| Suggestion {
-                fixes: fixes::parse_do_text(&do_text),
+                fixes: fixes::parse_alert_fixes(&do_text, &uuid, last_seen, &audit),
                 if_text,
                 then_text,
                 raw_text: do_text,
@@ -195,7 +195,7 @@ mod tests {
             raw_text: String::new(),
             analysis_id: "t".into(),
             fixes: vec![
-                Fix::CustomModule { name: "m".into() },
+                Fix::SetBool { name: "httpd_can_network_connect".into(), value: true },
                 Fix::Restorecon { path: "/x".into(), recursive: false },
             ],
         }];

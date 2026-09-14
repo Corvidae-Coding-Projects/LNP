@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "design_doc": ".design/refcount-hardening.md",
+  "doc_hash": "sha256:ebcd30c64ecc3d40684c566ce773bda068a35b4edaa061fdfdf733939145707c",
+  "stage": "designed",
+  "plans": [],
+  "runs": []
+}

@@ -1,7 +1,10 @@
 [Unit]
 Description=LNP security alert notifications
 PartOf=graphical-session.target
-After=graphical-session.target
+# plasma-workspace.target is Before graphical-session.target and also waits
+# for this wanted unit. Ordering after graphical-session.target would form a
+# cycle, so use the shell as the concrete readiness boundary instead.
+After=plasma-plasmashell.service
 
 # No ConditionEnvironment: this watcher needs the session bus for
 # notifications and the system bus for setroubleshootd, not the compositor.

@@ -124,9 +124,7 @@ fn main() -> Result<()> {
     let pin_specs = pins::load();
     let items = resolve_pins(&pin_specs);
 
-    if items.is_empty() {
-        anyhow::bail!("no launchers could be resolved; refusing to show an empty dock");
-    }
+    // An empty pin list is valid: Apps and the live window list still work.
 
     let conn = Connection::connect_to_env().context("connecting to the Wayland compositor")?;
     let (globals, mut event_queue) = registry_queue_init(&conn)?;
