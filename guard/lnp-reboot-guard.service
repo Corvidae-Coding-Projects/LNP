@@ -4,5 +4,8 @@ Description=LNP reboot guard (waits for the graphics driver to be ready)
 [Service]
 Type=simple
 ExecStart=/usr/libexec/lnp-guard guard
-# The unit succeeds by exiting once restart is safe.
+# Bound even a stuck readiness command or inhibitor process.
+RuntimeMaxSec=31min
+TimeoutStopSec=10s
+# The unit succeeds only when the readiness check passes.
 Restart=no

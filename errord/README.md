@@ -20,3 +20,10 @@ administrator. Packaging is in `../specs/lnp.spec`.
 python3 -m py_compile errord/lnp-errord
 python3 -m unittest discover -s tests -v
 ```
+
+The daemon restarts when its journal follower exits, including a clean exit.
+Journal and disk notifications share a thread-safe five-minute limit: at most
+five individual notices and one summary. Repeated stories retain their own
+limits, including the six-hour disk-warning limit. Notification bodies are
+escaped before being sent to the desktop, so names from journal entries are
+shown as text rather than markup.

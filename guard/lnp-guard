@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 #
-# lnp-guard -- updates that cannot hurt you.
+# lnp-guard -- guarded updates and restart checks.
 #
 # Three jobs, all root-side, all invoked by systemd units or by lnp-setup:
 #
@@ -28,69 +28,70 @@ readonly KEEP_SNAPSHOTS=5
 log() { echo "lnp-guard: $*"; }
 die() { log "$*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || die "must run as root"
-
-root_device() {
-    findmnt -n -o SOURCE / | sed 's/\[.*\]//'
-}
-
-mount_top() {
-    mkdir -p "$TOP"
-    mountpoint -q "$TOP" && return 0
-    mount -o subvolid=5 "$(root_device)" "$TOP" || die "cannot mount btrfs top level"
-}
-
-umount_top() {
-    mountpoint -q "$TOP" && umount "$TOP"
-}
+# shellcheck source=guard/lnp-btrfs-common
+source /usr/libexec/lnp-btrfs-common || die "cannot load the filesystem helper"
 
 cmd_snapshot() {
     local tag="${1:-manual}"
+    [[ "$tag" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$ ]] || die "invalid snapshot tag"
 
     [ "$(findmnt -n -o FSTYPE /)" = "btrfs" ] || die "root is not btrfs; snapshots unavailable"
 
     mount_top
     trap umount_top EXIT
+    local running_id target_id
+    running_id=$(btrfs inspect-internal rootid /) || die "cannot identify the running system"
+    target_id=$(btrfs inspect-internal rootid "$TOP/root") || die "cannot identify the next-boot system"
+    [ "$running_id" = "$target_id" ] || die "a restore is pending; restart before taking snapshots or updating"
 
     if [ ! -d "$TOP/$SNAPDIR_NAME" ]; then
         btrfs subvolume create "$TOP/$SNAPDIR_NAME" >/dev/null \
             || die "cannot create the snapshots subvolume"
     fi
 
-    local name
-    name="$(date +%Y%m%d-%H%M%S)-${tag}"
+    local name stamp sequence=0
+    stamp=$(date +%Y%m%d-%H%M%S)
+    while :; do
+        printf -v name '%s-%06d-%s' "$stamp" "$sequence" "$tag"
+        [ ! -e "$TOP/$SNAPDIR_NAME/$name" ] && [ ! -L "$TOP/$SNAPDIR_NAME/$name" ] && break
+        sequence=$((sequence + 1))
+        [ "$sequence" -le 999999 ] || die "too many snapshots with this timestamp"
+    done
     btrfs subvolume snapshot -r "$TOP/root" "$TOP/$SNAPDIR_NAME/$name" >/dev/null \
         || die "snapshot failed"
     log "saved a system snapshot: $name"
 
-    # Prune, oldest first, keeping the most recent KEEP_SNAPSHOTS.
-    local all count
-    all=$(ls -1 "$TOP/$SNAPDIR_NAME" | sort)
-    count=$(wc -l <<<"$all")
-    if [ "$count" -gt "$KEEP_SNAPSHOTS" ]; then
-        head -n "$(( count - KEEP_SNAPSHOTS ))" <<<"$all" | while read -r old; do
-            [ -n "$old" ] || continue
-            btrfs subvolume delete "$TOP/$SNAPDIR_NAME/$old" >/dev/null \
-                && log "pruned old snapshot: $old"
-        done
-    fi
+    prune_snapshots "$KEEP_SNAPSHOTS" || return 1
+    prune_replaced_roots
+
 }
 
 newest_kernel() {
-    ls -1 /usr/lib/modules | sort -V | tail -1
+    rpm -q kernel-core --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort -V | tail -1
 }
 
 # Restarting is safe when the newest kernel can drive the screen.
+additional_driver_checks() {
+    # This fixed, administrator-owned local hook may impose additional hardware
+    # checks (for example DKMS fan-control drivers). It cannot bypass ours.
+    if [ -x /usr/local/libexec/lnp-driver-guard ]; then
+        /usr/local/libexec/lnp-driver-guard ready || return 1
+    fi
+}
+
 cmd_reboot_safe() {
+    additional_driver_checks || return 1
     # No NVIDIA driver installed -> nothing to wait for.
-    rpm -q akmod-nvidia >/dev/null 2>&1 || return 0
+    if ! rpm -q akmod-nvidia >/dev/null 2>&1 \
+        && ! rpm -q akmod-nvidia-open >/dev/null 2>&1; then
+        return 0
+    fi
 
     local kver
-    kver="$(newest_kernel)"
-    [ -n "$kver" ] || return 0
+    kver="$(newest_kernel)" || { log "cannot determine the installed kernel"; return 1; }
+    [ -n "$kver" ] || { log "cannot determine the installed kernel"; return 1; }
 
-    if compgen -G "/usr/lib/modules/$kver/extra/nvidia*/nvidia*.ko*" >/dev/null \
-        || compgen -G "/usr/lib/modules/$kver/weak-updates/nvidia*/nvidia*.ko*" >/dev/null; then
+    if modinfo -k "$kver" -F filename nvidia >/dev/null 2>&1; then
         return 0
     fi
 
@@ -113,19 +114,32 @@ cmd_guard() {
         --mode=block \
         --who="LNP" \
         --why="Finishing a graphics driver update -- restarting now could leave the screen black" \
-        bash -c '
-            while ! /usr/libexec/lnp-guard reboot-safe >/dev/null 2>&1; do
-                sleep 10
-            done
-            echo "lnp-guard: graphics driver ready; restart is safe again"
-        '
+        /usr/libexec/lnp-guard wait
+}
+
+cmd_poll() {
+    while ! cmd_reboot_safe >/dev/null 2>&1; do
+        sleep 10
+    done
+}
+
+cmd_wait() {
+    local result=0
+    timeout --kill-after=10s 30m /usr/libexec/lnp-guard poll || result=$?
+    if [ "$result" -eq 0 ]; then
+        log "graphics driver ready; restart is safe again"
+    else
+        log "driver preparation failed or timed out; restart hold released. Graphics may not work after restarting. Get help before restarting; recovery is available if the desktop cannot start."
+    fi
+    return "$result"
 }
 
 cmd_update() {
     log "checking for updates"
 
     # A snapshot first, always: the undo for everything that follows.
-    /usr/libexec/lnp-guard snapshot pre-update || die "not updating without a snapshot"
+    lock_top
+    cmd_snapshot pre-update || die "not updating without a snapshot"
 
     if dnf -y --refresh upgrade 2>&1 | tail -20; then
         log "update finished. Your computer is up to date; nothing is needed from you."
@@ -138,29 +152,97 @@ cmd_update() {
     systemctl start lnp-reboot-guard.service --no-block 2>/dev/null || true
 }
 
+# Only LNP's dated snapshot names are eligible. Keep the newest pre-update
+# state even when manual snapshots are newer.
+prune_snapshots() {
+    local keep="$1" path newest_update="" failed=0 i
+    local -a snapshots=()
+    while IFS= read -r path; do
+        [[ "${path##*/}" =~ ^[0-9]{8}-[0-9]{6}(-[0-9]+)?-[a-zA-Z0-9_-]+$ ]] || continue
+        [ ! -L "$path" ] || continue
+        btrfs subvolume show "$path" >/dev/null 2>&1 || continue
+        snapshots+=("$path")
+        [[ "$path" == *-pre-update ]] && newest_update="$path"
+    done < <(find "$TOP/$SNAPDIR_NAME" -mindepth 1 -maxdepth 1 -type d -print | sort)
+    for (( i=0; i<${#snapshots[@]}-keep; i++ )); do
+        path="${snapshots[$i]}"
+        [ "$path" = "$newest_update" ] && continue
+        btrfs subvolume delete "$path" >/dev/null && log "pruned old snapshot: ${path##*/}" || failed=1
+    done
+    return "$failed"
+}
+
+prune_replaced_roots() {
+    local archive="$TOP/$SNAPDIR_NAME/replaced-roots" path id mounted default_id active_id failed=0 i
+    local -a saved=()
+    [ ! -L "$archive" ] || { log "invalid saved-system directory"; return 1; }
+    # Fail closed when liveness cannot be established. IDs survive renames.
+    mounted=$(findmnt -rn -t btrfs -o OPTIONS) || return 1
+    active_id=$(btrfs inspect-internal rootid /) || return 1
+    default_id=$(btrfs subvolume get-default "$TOP") || return 1
+    default_id=$(awk '$1 == "ID" {print $2}' <<<"$default_id")
+    [[ "$active_id" =~ ^[0-9]+$ && "$default_id" =~ ^[0-9]+$ ]] || return 1
+    mkdir -p "$archive" || return 1
+
+    # Move legacy saved roots into the documented retention directory. Never
+    # move a mounted/default root, and never overwrite an existing saved root.
+    for path in "$TOP"/root.before-restore-*; do
+        [[ "${path##*/}" =~ ^root\.before-restore-[0-9]{8}-[0-9]{6}(-[a-zA-Z0-9]+)?$ ]] || continue
+        [ -d "$path" ] && [ ! -L "$path" ] || continue
+        id=$(btrfs inspect-internal rootid "$path") || { failed=1; continue; }
+        [[ "$id" =~ ^[0-9]+$ ]] || { failed=1; continue; }
+        if [ "$id" = "$active_id" ] || [ "$id" = "$default_id" ] \
+            || grep -Eq "(^|,)subvolid=$id(,|$)" <<<"$mounted"; then
+            continue
+        fi
+        [ ! -e "$archive/${path##*/}" ] && [ ! -L "$archive/${path##*/}" ] || continue
+        btrfs subvolume show "$path" >/dev/null 2>&1 || continue
+        mv -T -- "$path" "$archive/${path##*/}" || failed=1
+    done
+    while IFS= read -r path; do
+        [[ "${path##*/}" =~ ^root\.before-restore-[0-9]{8}-[0-9]{6}(-[a-zA-Z0-9]+)?$ ]] || continue
+        [ ! -L "$path" ] || continue
+        btrfs subvolume show "$path" >/dev/null 2>&1 || continue
+        saved+=("$path")
+    done < <(find "$archive" -mindepth 1 -maxdepth 1 -type d -print | sort)
+    for (( i=0; i<${#saved[@]}-2; i++ )); do
+        path="${saved[$i]}"
+        id=$(btrfs inspect-internal rootid "$path") || { failed=1; continue; }
+        [[ "$id" =~ ^[0-9]+$ ]] || { failed=1; continue; }
+        if [ "$id" = "$active_id" ] || [ "$id" = "$default_id" ] \
+            || grep -Eq "(^|,)subvolid=$id(,|$)" <<<"$mounted"; then
+            continue
+        fi
+        btrfs subvolume delete "$path" >/dev/null && log "pruned replaced system: ${path##*/}" || failed=1
+    done
+    return "$failed"
+}
+
 cmd_prune() {
     local keep="${1:-3}"
+    [[ "$keep" =~ ^[1-9][0-9]{0,3}$ ]] || die "keep count must be between 1 and 9999"
     mount_top
     trap umount_top EXIT
     [ -d "$TOP/$SNAPDIR_NAME" ] || { log "no snapshots yet"; return 0; }
-
-    local all count
-    all=$(ls -1 "$TOP/$SNAPDIR_NAME" | sort)
-    count=$(wc -l <<<"$all")
-    if [ "$count" -gt "$keep" ]; then
-        head -n "$(( count - keep ))" <<<"$all" | while read -r old; do
-            [ -n "$old" ] || continue
-            btrfs subvolume delete "$TOP/$SNAPDIR_NAME/$old" >/dev/null \
-                && log "pruned old snapshot: $old"
-        done
-    fi
+    prune_snapshots "$keep" || return 1
+    prune_replaced_roots
 }
 
-case "${1:-}" in
-    snapshot)     shift; cmd_snapshot "$@" ;;
-    prune)        shift; cmd_prune "$@" ;;
-    reboot-safe)  cmd_reboot_safe ;;
-    guard)        cmd_guard ;;
-    update)       cmd_update ;;
-    *)            die "usage: lnp-guard snapshot [tag] | prune [keep] | reboot-safe | guard | update" ;;
-esac
+main() {
+    [ "$(id -u)" -eq 0 ] || die "must run as root"
+    case "${1:-}" in
+        wait)         cmd_wait ;;
+        poll)         cmd_poll ;;
+        snapshot)     shift; cmd_snapshot "$@" ;;
+        prune)        shift; cmd_prune "$@" ;;
+        reboot-safe)  cmd_reboot_safe ;;
+        guard)        cmd_guard ;;
+        update)       cmd_update ;;
+        *)            die "usage: lnp-guard snapshot [tag] | prune [keep] | reboot-safe | guard | update" ;;
+    esac
+
+}
+
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
+    main "$@"
+fi

@@ -103,16 +103,18 @@ menu (search for "Welcome").
 
 # --------------------------------------------------------------------- guard
 %package -n lnp-guard
-Summary:        Updates that cannot hurt you
+Summary:        Guarded updates with system snapshots
 Requires:       btrfs-progs
 Requires:       dnf
+Requires:       kmod
+Requires:       /usr/bin/flock
 %{?systemd_requires}
 
 %description -n lnp-guard
-Safe automatic updates: a read-only btrfs snapshot of the system before every
-update, a daily update timer that runs only on AC power, and a reboot guard
-that blocks restarting while a new kernel's NVIDIA module is still building --
-the classic black-screen-after-update trap, closed.
+Guarded automatic updates: a read-only btrfs snapshot before every update,
+a daily timer that runs only on AC power, and a reboot guard that waits up to
+30 minutes for NVIDIA and local driver checks. A failed check releases the
+hold with a warning rather than claiming that restart is safe.
 
 Snapshots restore with lnp-restore (from lnp-recovery) or from the recovery
 prompt if the desktop fails to start.
@@ -124,6 +126,9 @@ Summary:        Plain-language recovery when the desktop cannot start
 Requires:       btrfs-progs
 # Authenticated console login for the support option.
 Requires:       /usr/bin/login
+Requires:       lnp-guard = %{version}-%{release}
+# Select a boot entry compatible with the restored root.
+Requires:       grubby
 %{?systemd_requires}
 
 %description -n lnp-recovery
@@ -206,6 +211,7 @@ install -Dpm 0644 errord/lnp-errord.service %{buildroot}%{_userunitdir}/lnp-erro
 install -Dpm 0644 errord/82-lnp-errord.preset %{buildroot}%{_userpresetdir}/82-lnp-errord.preset
 
 # Guard: snapshots, guarded updates, reboot guard.
+install -Dpm 0644 guard/lnp-btrfs-common %{buildroot}%{_libexecdir}/lnp-btrfs-common
 install -Dpm 0755 guard/lnp-guard %{buildroot}%{_libexecdir}/lnp-guard
 install -Dpm 0644 guard/lnp-guard-update.service %{buildroot}%{_unitdir}/lnp-guard-update.service
 install -Dpm 0644 guard/lnp-guard-update.timer %{buildroot}%{_unitdir}/lnp-guard-update.timer
@@ -290,6 +296,7 @@ install -Dpm 0644 welcome/lnp-welcome-autostart.desktop %{buildroot}%{_sysconfdi
 %files -n lnp-guard
 %license LICENSE
 %{_libexecdir}/lnp-guard
+%{_libexecdir}/lnp-btrfs-common
 %{_unitdir}/lnp-guard-update.service
 %{_unitdir}/lnp-guard-update.timer
 %{_unitdir}/lnp-reboot-guard.service
@@ -314,6 +321,14 @@ install -Dpm 0644 welcome/lnp-welcome-autostart.desktop %{buildroot}%{_sysconfdi
 
 
 %changelog
+* Mon Sep 28 2026 LNP Project <lnp@example.invalid> - 0.3.0-8
+- Local repair rebuild for issue #1; retain the release to preserve the
+  installed desktop metapackage's exact version dependencies.
+- Select a compatible boot entry before restoring root and preserve rollback.
+- Bound driver waits, retain saved roots safely, and serialize Btrfs operations.
+- Cover open NVIDIA modules and generate collision-free snapshot names.
+- Restart the notifier after clean journal exit; cap and escape notifications.
+
 * Sat Aug 15 2026 LNP Project <lnp@example.invalid> - 0.3.0-8
 - Make the error notification daemon tolerate null and non-text journal fields
   instead of crashing and restarting on malformed entries.

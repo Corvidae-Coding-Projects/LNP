@@ -16,3 +16,19 @@ python3 -m unittest discover -s tests -v
 
 The tests use fake system commands and temporary folders. They must not change
 the real desktop, installed packages, SELinux policy, or login service.
+
+Issue #1 regression coverage lives in `test_guard_recovery.py` and
+`test_errord.py`: boot compatibility, restore rollback, saved-root retention,
+restart-hold failure, journal exit, both NVIDIA packages, snapshot collisions,
+notification floods/markup, and cross-process operation locking.
+
+For the real Btrfs integration check, explicitly run:
+
+```sh
+sudo tests/check-btrfs-recovery
+```
+
+It creates a disposable 512 MiB sparse loop image in a private mount namespace
+and removes it afterward. Bootloader calls use fixtures; root renames,
+snapshots, mounted-root preservation, and pruning use real Btrfs operations.
+It does not restore, update, or prune the host filesystem.

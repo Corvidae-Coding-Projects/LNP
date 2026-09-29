@@ -20,54 +20,101 @@ readonly SNAPDIR=snapshots
 log() { echo "lnp-restore: $*"; }
 die() { log "$*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || die "must run as root"
-
-root_device() {
-    findmnt -n -o SOURCE / | sed 's/\[.*\]//'
-}
-
-mount_top() {
-    mkdir -p "$TOP"
-    mountpoint -q "$TOP" && return 0
-    mount -o subvolid=5 "$(root_device)" "$TOP" || die "cannot reach the disk's top level"
-}
-
-umount_top() {
-    mountpoint -q "$TOP" && umount "$TOP"
-}
+# shellcheck source=guard/lnp-btrfs-common
+source /usr/libexec/lnp-btrfs-common || die "cannot load the filesystem helper"
 
 cmd_list() {
     mount_top
     trap umount_top EXIT
-    if [ ! -d "$TOP/$SNAPDIR" ] || [ -z "$(ls -A "$TOP/$SNAPDIR" 2>/dev/null)" ]; then
-        log "no snapshots yet"
+    local path found=0
+    for path in "$TOP/$SNAPDIR"/* "$TOP/$SNAPDIR/replaced-roots"/root.before-restore-* "$TOP"/root.before-restore-*; do
+        [ -d "$path" ] && [ ! -L "$path" ] || continue
+        btrfs subvolume show "$path" >/dev/null 2>&1 || continue
+        printf '%s\n' "${path##*/}"
+        found=1
+    done
+    [ "$found" -ne 0 ] || log "no snapshots yet"
+
+}
+
+# Only select an existing boot entry with modules in both systems. Keeping the
+# kernel usable in the current root also makes a failed root switch recoverable.
+restore_kernel() {
+    local snapshot="$1" kver kernel info initrd args
+    while IFS= read -r kver; do
+        [[ "$kver" =~ ^[a-zA-Z0-9._+-]+$ ]] || continue
+        [ -d "$snapshot/usr/lib/modules/$kver/kernel" ] || continue
+        [ -d "/usr/lib/modules/$kver/kernel" ] || continue
+        kernel="/boot/vmlinuz-$kver"
+        [ -s "$kernel" ] || continue
+        info=$(grubby --info="$kernel") || continue
+        # Do not evaluate bootloader text as shell code.
+        args=$(sed -n 's/^args="\(.*\)"$/\1/p' <<<"$info")
+        [[ " $args " == *" rootflags=subvol=root "* ]] || continue
+        [[ "$args" != *subvolid=* ]] || continue
+        initrd=$(sed -n 's/^initrd="\([^ " ]*\).*"$/\1/p' <<<"$info")
+        [[ "$initrd" == /boot/* && "$initrd" != *..* ]] || continue
+        [ -s "$initrd" ] || continue
+        printf '%s\n' "$kernel"
         return 0
-    fi
-    ls -1 "$TOP/$SNAPDIR" | sort
+    done < <(find "$snapshot/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -Vr)
+    return 1
+}
+
+restore_default() {
+    grubby --set-default="$1" && [ "$(grubby --default-kernel)" = "$1" ]
 }
 
 cmd_restore() {
     local name="$1"
+    [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ && "$name" != *..* ]] \
+        || die "invalid snapshot name"
     mount_top
     trap umount_top EXIT
 
-    [ -d "$TOP/$SNAPDIR/$name" ] || die "no snapshot called '$name'"
-    [ -d "$TOP/root" ] || die "cannot find the current system subvolume"
+    local snapshot="$TOP/$SNAPDIR/$name" kernel previous stage saved
+    if [[ "$name" == root.before-restore-* ]]; then
+        snapshot="$TOP/$SNAPDIR/replaced-roots/$name"
+        [ -e "$snapshot" ] || snapshot="$TOP/$name"
+    fi
+    if [ -L "$snapshot" ] || ! btrfs subvolume show "$snapshot" >/dev/null; then
+        die "no system snapshot called '$name'"
+    fi
+    if [ -L "$TOP/root" ] || ! btrfs subvolume show "$TOP/root" >/dev/null; then
+        die "cannot find the current system subvolume"
+    fi
+    kernel=$(restore_kernel "$snapshot") \
+        || die "no compatible installed boot entry remains for this snapshot; nothing was restored"
+    previous=$(grubby --default-kernel) || die "cannot read the current boot entry"
+    [ -n "$previous" ] || die "cannot read the current boot entry"
 
-    # The current root is kept, renamed, so this operation is itself undoable.
-    local stamp
-    stamp="$(date +%Y%m%d-%H%M%S)"
-    mv "$TOP/root" "$TOP/root.before-restore-$stamp" \
-        || die "could not set the current system aside"
-
-    if ! btrfs subvolume snapshot "$TOP/$SNAPDIR/$name" "$TOP/root" >/dev/null; then
-        # Put things back rather than leave no 'root' at all.
-        mv "$TOP/root.before-restore-$stamp" "$TOP/root"
-        die "restore failed; nothing was changed"
+    [ ! -L "$TOP/$SNAPDIR/replaced-roots" ] || die "invalid saved-system directory"
+    mkdir -p "$TOP/$SNAPDIR/replaced-roots" || die "cannot create saved-system directory"
+    stage=$(mktemp -d "$TOP/.lnp-restore.XXXXXX") || die "cannot prepare restore"
+    rmdir "$stage" || die "cannot prepare restore"
+    btrfs subvolume snapshot "$snapshot" "$stage" >/dev/null \
+        || die "could not prepare the restored system; current root is unchanged"
+    if ! restore_default "$kernel"; then
+        restore_default "$previous" || die "boot entry rollback failed; root is unchanged; get help before restarting"
+        btrfs subvolume delete "$stage" >/dev/null || log "could not remove staging snapshot $stage"
+        die "could not select the matching boot entry; root is unchanged"
     fi
 
-    log "restored snapshot '$name'."
-    log "the replaced system is kept as 'root.before-restore-$stamp'."
+    saved="$TOP/$SNAPDIR/replaced-roots/root.before-restore-$(date +%Y%m%d-%H%M%S)-${stage##*.}"
+    if ! mv -T -- "$TOP/root" "$saved"; then
+        restore_default "$previous" || die "boot entry rollback failed; root is unchanged; get help before restarting"
+        btrfs subvolume delete "$stage" >/dev/null || log "could not remove staging snapshot $stage"
+        die "could not set the current system aside"
+    fi
+    if ! mv -T -- "$stage" "$TOP/root"; then
+        mv -T -- "$saved" "$TOP/root" || die "root rollback failed; system kept at $saved; get help before restarting"
+        restore_default "$previous" || die "boot entry rollback failed; get help before restarting"
+        btrfs subvolume delete "$stage" >/dev/null || log "could not remove staging snapshot $stage"
+        die "restore failed; previous root and boot entry restored"
+    fi
+
+    log "restored snapshot '$name'; next boot uses ${kernel##*/}."
+    log "the replaced system is kept at '$saved'."
     log "restart the computer to finish."
 }
 
@@ -77,15 +124,22 @@ cmd_restore_last_update() {
     for d in "$TOP/$SNAPDIR"/*-pre-update; do
         [ -d "$d" ] && latest="${d##*/}"
     done
-    umount_top
     [ -n "$latest" ] || die "no pre-update snapshot found"
     cmd_restore "$latest"
 }
 
-case "${1:-}" in
-    list)                cmd_list ;;
-    restore)             [ -n "${2:-}" ] || die "usage: lnp-restore restore <name>"
-                         cmd_restore "$2" ;;
-    restore-last-update) cmd_restore_last_update ;;
-    *)                   die "usage: lnp-restore list | restore <name> | restore-last-update" ;;
-esac
+main() {
+    [ "$(id -u)" -eq 0 ] || die "must run as root"
+    case "${1:-}" in
+        list)                cmd_list ;;
+        restore)             [ -n "${2:-}" ] || die "usage: lnp-restore restore <name>"
+                             cmd_restore "$2" ;;
+        restore-last-update) cmd_restore_last_update ;;
+        *)                   die "usage: lnp-restore list | restore <name> | restore-last-update" ;;
+    esac
+
+}
+
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
+    main "$@"
+fi

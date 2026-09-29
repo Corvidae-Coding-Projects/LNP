@@ -1,0 +1,43 @@
+# shellcheck shell=bash
+# Shared by lnp-guard and lnp-restore. Caller defines TOP, log and die.
+# Lock ownership lasts for the whole process, including a guarded update.
+TOP_LOCKED=0
+TOP_MOUNTED=0
+
+root_device() {
+    findmnt -n -o SOURCE / | sed 's/\[.*\]//'
+}
+
+lock_top() {
+    [ "$TOP_LOCKED" -eq 0 ] || return 0
+    mkdir -p /run/lnp || die "cannot create the system-operation directory"
+    exec 9>/run/lnp/operation.lock || die "cannot open the system-operation lock"
+    flock -n -x 9 || die "another LNP snapshot, cleanup, update, or restore is running; try again when it finishes"
+    TOP_LOCKED=1
+}
+
+mount_top() {
+    lock_top
+    [ "$(findmnt -n -o FSTYPE /)" = btrfs ] || die "root is not btrfs"
+    local device
+    device=$(root_device) || die "cannot determine the root device"
+    [ -n "$device" ] || die "cannot determine the root device"
+    mkdir -p "$TOP" || die "cannot create the top-level mount directory"
+    if mountpoint -q "$TOP"; then
+        [ "$(findmnt -n -o FSTYPE --target "$TOP")" = btrfs ] \
+            && [ "$(findmnt -n -o FSROOT --target "$TOP")" = / ] \
+            && [ "$(findmnt -n -o SOURCE --target "$TOP")" = "$device" ] \
+            || die "the existing top-level mount is not the root filesystem"
+    else
+        mount -o subvolid=5 "$device" "$TOP" || die "cannot mount btrfs top level"
+        TOP_MOUNTED=1
+    fi
+    trap umount_top EXIT
+}
+
+umount_top() {
+    if [ "$TOP_MOUNTED" -eq 1 ]; then
+        umount "$TOP" || { log "could not unmount $TOP"; return 1; }
+        TOP_MOUNTED=0
+    fi
+}

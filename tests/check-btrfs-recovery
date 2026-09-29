@@ -1,0 +1,100 @@
+#!/usr/bin/bash
+# Explicit opt-in integration test. Run with sudo; all filesystem mutations
+# occur on a new sparse loop image in a private mount namespace.
+set -euo pipefail
+if [ "${1:-}" != --private ]; then
+    exec unshare --mount --propagation private "$0" --private
+fi
+repo=$(cd -- "$(dirname -- "$0")/.." && pwd)
+work=$(mktemp -d /tmp/lnp-btrfs-test-XXXXXX)
+cleanup() {
+    mountpoint -q "$work/fs" && umount "$work/fs"
+    rm -rf -- "$work"
+}
+trap cleanup EXIT
+truncate -s 512M "$work/disk"
+mkfs.btrfs -q -f "$work/disk"
+mkdir "$work/fs"
+mount -o loop "$work/disk" "$work/fs"
+python3 - "$repo" "$work" <<'PY'
+from pathlib import Path
+import os
+import shlex
+import subprocess
+import sys
+
+repo, work = map(Path, sys.argv[1:])
+top = work / 'fs'
+
+def run(*args):
+    return subprocess.check_output(args, text=True).strip()
+
+for name in ('root', 'snapshots'):
+    run('btrfs', 'subvolume', 'create', str(top / name))
+(top / 'root/usr/lib/modules/test-kernel/kernel').mkdir(parents=True)
+(top / 'root/identity').write_text('saved system')
+snapshot = top / 'snapshots/20260928-000000-pre-update'
+run('btrfs', 'subvolume', 'snapshot', '-r', str(top / 'root'), str(snapshot))
+(top / 'root/identity').write_text('current system')
+(work / 'boot').mkdir()
+for name in ('vmlinuz-test-kernel', 'initramfs-test-kernel.img'):
+    (work / 'boot' / name).write_text('boot fixture')
+(work / 'modules/test-kernel/kernel').mkdir(parents=True)
+(work / 'default').write_text('previous-kernel\n')
+source = (repo / 'recovery/lnp-restore').read_text()
+source = source.replace('/usr/libexec/lnp-btrfs-common', str(repo / 'guard/lnp-btrfs-common'))
+source = source.replace('/run/lnp/top', str(top)).replace('/boot/', str(work / 'boot') + '/')
+source = source.replace('"/usr/lib/modules/', '"' + str(work / 'modules') + '/')
+restore = work / 'restore'
+restore.write_text(source)
+# Only mount setup and bootloader calls are mocked. Snapshot creation, root
+# renames, rollback copies, retention and deletion use the real Btrfs tools.
+mocks = r'''
+mount_top() { :; }
+umount_top() { :; }
+grubby() {
+    case "$1" in
+        --info=*) printf 'args="rootflags=subvol=root"\ninitrd="%s/boot/initramfs-test-kernel.img"\n' "$TEST_WORK" ;;
+        --default-kernel) cat "$TEST_WORK/default" ;;
+        --set-default=*) printf '%s\n' "${1#*=}" > "$TEST_WORK/default" ;;
+        *) return 99 ;;
+    esac
+}
+'''
+env = dict(os.environ, TEST_WORK=str(work))
+subprocess.run(['bash', '-c', 'source ' + shlex.quote(str(restore)) + '\n' + mocks + '\ncmd_restore 20260928-000000-pre-update'], env=env, check=True)
+assert (top / 'root/identity').read_text() == 'saved system'
+archive = top / 'snapshots/replaced-roots'
+saved = list(archive.glob('root.before-restore-*'))
+assert len(saved) == 1
+assert (saved[0] / 'identity').read_text() == 'current system'
+# Model the next boot by keeping the restored root mounted. The old root is
+# still mounted too, to verify it cannot be pruned even after aging out.
+old_mount = work / 'old-mount'
+old_mount.mkdir()
+subprocess.run(['mount', '--bind', str(saved[0]), str(old_mount)], check=True)
+try:
+    for day in range(1, 5):
+        run('btrfs', 'subvolume', 'snapshot', str(top / 'root'), str(archive / f'root.before-restore-209901{day:02}-000000'))
+    source = (repo / 'guard/lnp-guard').read_text().replace('/run/lnp/top', str(top))
+    source = source.replace('/usr/libexec/lnp-btrfs-common', str(repo / 'guard/lnp-btrfs-common'))
+    guard = work / 'guard'
+    guard.write_text(source)
+    # Redirect only the running-root query; the host root is outside this test.
+    stub = '''
+btrfs() {
+    if [ "$1:$2:$3" = inspect-internal:rootid:/ ]; then
+        command btrfs inspect-internal rootid "$TOP/root"
+    else
+        command btrfs "$@"
+    fi
+}
+prune_replaced_roots
+'''
+    subprocess.run(['bash', '-c', 'source ' + shlex.quote(str(guard)) + '\n' + stub], check=True)
+    assert saved[0].exists(), 'mounted replaced root was deleted'
+    assert len(list(archive.iterdir())) == 3, list(archive.iterdir())
+finally:
+    subprocess.run(['umount', str(old_mount)], check=True)
+print('PASS: real Btrfs restore, cross-subvolume rename, old-root preservation and bounded retention')
+PY

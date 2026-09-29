@@ -18,6 +18,8 @@ Design limits, on purpose:
     only ever *shows* things.
 """
 
+from collections import deque
+from html import escape
 import json
 import os
 import re
@@ -113,8 +115,15 @@ def t_guard(entry):
             "guard:holding",
             "One moment before restarting",
             "A graphics driver update is finishing in the background. "
-            "Restarting is paused for a few minutes so the screen cannot "
-            "go black. You will be able to restart shortly.",
+            "Restarting is paused for up to 30 minutes while it is checked. "
+            "If preparation fails, you will see another message.",
+        )
+    if unit == "lnp-reboot-guard.service" and "restart hold released" in msg:
+        return (
+            "guard:failed",
+            "The graphics driver did not finish preparing",
+            "The restart hold has ended, but graphics may not work after a restart. "
+            "Get help before restarting. If the desktop cannot start, use the recovery screen.",
         )
     return None
 
@@ -174,15 +183,45 @@ def disk_percent(path="/") -> int:
     return int(round(used * 100 / total)) if total else 0
 
 
-def disk_watch(last_seen: dict):
+class NotificationLimiter:
+    """One sliding-window budget shared by the journal and disk threads.
+
+    Reserve the sixth notification for a summary. Further distinct failures
+    stay in the journal until the five-minute window has capacity again.
+    """
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.sent = deque()
+        self.last_seen = {}
+        self.summary_at = None
+
+    def emit(self, story, repeat_after=RATE_LIMIT):
+        key, title, body = story
+        with self.lock:
+            now = time.monotonic()
+            while self.sent and now - self.sent[0] >= RATE_LIMIT:
+                self.sent.popleft()
+            if now - self.last_seen.get(key, -repeat_after) < repeat_after:
+                return False
+            if len(self.sent) >= 5:
+                if self.summary_at is not None and now - self.summary_at < RATE_LIMIT:
+                    return False
+                if len(self.sent) >= 6:
+                    return False
+                title = "Several parts of the system are having problems"
+                body = ("Further alerts are paused to avoid filling your screen. "
+                        "The details remain in the system log for someone helping you.")
+                self.summary_at = now
+            self.last_seen[key] = now
+            self.sent.append(now)
+            return notify(title, body)
+
+
+def disk_watch(limiter):
     while True:
         story = disk_story(disk_percent("/"))
         if story:
-            key, title, body = story
-            now = time.monotonic()
-            if now - last_seen.get(key, -DISK_RATE_LIMIT) >= DISK_RATE_LIMIT:
-                last_seen[key] = now
-                notify(title, body)
+            limiter.emit(story, DISK_RATE_LIMIT)
         time.sleep(DISK_CHECK_INTERVAL)
 
 
@@ -197,7 +236,7 @@ def notify(title: str, body: str) -> bool:
             "--dest", "org.freedesktop.Notifications",
             "--object-path", "/org/freedesktop/Notifications",
             "--method", "org.freedesktop.Notifications.Notify",
-            "lnp-errord", "0", "dialog-warning", title, body,
+            "lnp-errord", "0", "dialog-warning", title, escape(body),
             "[]", "{}", "15000",
         ],
         capture_output=True,
@@ -235,9 +274,9 @@ def follow() -> int:
         text=True,
     )
 
-    last_seen: dict[str, float] = {}
+    limiter = NotificationLimiter()
 
-    threading.Thread(target=disk_watch, args=(last_seen,), daemon=True).start()
+    threading.Thread(target=disk_watch, args=(limiter,), daemon=True).start()
 
     for line in proc.stdout:
         try:
@@ -249,15 +288,11 @@ def follow() -> int:
         if not found:
             continue
 
-        key, title, body = found
-        now = time.monotonic()
-        if now - last_seen.get(key, -RATE_LIMIT) < RATE_LIMIT:
-            continue
-        last_seen[key] = now
+        limiter.emit(found)
 
-        notify(title, body)
-
-    return proc.wait()
+    status = proc.wait()
+    print(f"lnp-errord: journal follower stopped (status {status}); service will restart", flush=True)
+    return status if status >= 0 else 128 - status
 
 
 def main() -> int:
