@@ -14,3 +14,13 @@ calls when needed.
 The app shows progress and tells the difference between success, failure, a
 cancelled password prompt, and a crashed helper. Packaging is in
 `../specs/lnp.spec`. Tests are in `../tests/test_regressions.py`.
+
+Cleanup and security setup report each completed, failed, or skipped step.
+A failed command preserves its output and makes the action fail, even if later
+steps succeed. The app explains that earlier changes may remain and keeps the
+retry button available. Optional components that are not installed are listed
+as skipped; a skipped step is not presented as an attempted repair.
+
+The DNS preference is written through a temporary file, so a failed write does
+not truncate the previous configuration. A resolver reload failure is reported
+as partial completion because the preference may already have been saved.

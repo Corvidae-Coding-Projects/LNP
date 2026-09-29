@@ -322,6 +322,13 @@ install -Dpm 0644 welcome/lnp-welcome-autostart.desktop %{buildroot}%{_sysconfdi
 
 %changelog
 * Mon Sep 28 2026 LNP Project <lnp@example.invalid> - 0.3.0-8
+- Local Welcome repair rebuild for issue #2, retaining installed version pins.
+- Propagate cleanup and security step failures with retained command details;
+  distinguish skipped components, completed work, and partial failure.
+- Preserve previous DNS configuration on write failure and keep UI retry
+  available after failed helper operations.
+
+* Mon Sep 28 2026 LNP Project <lnp@example.invalid> - 0.3.0-8
 - Local repair rebuild for issue #1; retain the release to preserve the
   installed desktop metapackage's exact version dependencies.
 - Select a compatible boot entry before restoring root and preserve rollback.

@@ -32,3 +32,8 @@ It creates a disposable 512 MiB sparse loop image in a private mount namespace
 and removes it afterward. Bootloader calls use fixtures; root renames,
 snapshots, mounted-root preservation, and pruning use real Btrfs operations.
 It does not restore, update, or prune the host filesystem.
+
+`test_setup.py` covers issue #2 with fake cleanup, package, service, and security
+commands plus temporary DNS configuration. It passes actual helper results to
+the offscreen Welcome UI and checks failures, mixed results, retry, success,
+skipped optional components, configuration-write errors, and split output.

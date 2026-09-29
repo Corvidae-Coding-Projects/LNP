@@ -111,6 +111,7 @@ class ActionPage(QWizardPage):
         self.action = action
         self.done_text = done_text
         self.proc: QProcess | None = None
+        self.pending_output = ""
 
         self.layout_ = QVBoxLayout(self)
 
@@ -147,6 +148,7 @@ class ActionPage(QWizardPage):
         self.status.setText("Working… this can take a few minutes.")
         self.details_toggle.setVisible(True)
         self.log.clear()
+        self.pending_output = ""
 
         self.proc = QProcess(self)
         self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
@@ -161,8 +163,11 @@ class ActionPage(QWizardPage):
         )
 
     def on_output(self):
-        text = bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
-        for line in text.splitlines():
+        self.pending_output += bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
+        lines = self.pending_output.split("\n")
+        self.pending_output = lines.pop()
+        for line in lines:
+            line = line.rstrip("\r")
             self.log.appendPlainText(line)
             # The helper's ==> lines are written to be shown to people.
             if line.startswith("==> "):
@@ -171,6 +176,9 @@ class ActionPage(QWizardPage):
     def on_finished(self, code: int, exit_status):
         if self.proc is not None:
             self.on_output()
+        if self.pending_output:
+            self.log.appendPlainText(self.pending_output)
+            self.pending_output = ""
         log_text = self.log.toPlainText()
         authorization_failed = (
             exit_status == QProcess.ExitStatus.NormalExit
@@ -179,7 +187,12 @@ class ActionPage(QWizardPage):
         )
 
         if code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
-            self.status.setText("✓ " + self.done_text)
+            if any(line.startswith("==> Skipped:") for line in log_text.splitlines()):
+                self.status.setText("Completed available steps. Some steps were skipped; see details below.")
+                if not self.log.isVisible():
+                    self.toggle_details()
+            else:
+                self.status.setText("✓ " + self.done_text)
             self.button.setVisible(False)
         elif authorization_failed and (
             "authentication agent" in log_text or "controlling terminal" in log_text

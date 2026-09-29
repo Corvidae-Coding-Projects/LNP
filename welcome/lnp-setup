@@ -16,7 +16,6 @@ die() {
     exit 1
 }
 
-[ "$(id -u)" -eq 0 ] || die "This program must be run by the system, not directly."
 
 # Progress messages the GUI surfaces directly.
 say() { echo "==> $*"; }
@@ -73,78 +72,169 @@ cmd_nvidia() {
     say "restart the computer in about five minutes to start using it."
 }
 
+# Each action reports all its steps, then returns one aggregate result. A
+# failed step does not erase earlier changes or prevent independent steps.
+failed_steps=0
+skipped_steps=0
+
+failed_step() {
+    say "Failed: $*"
+    failed_steps=$((failed_steps + 1))
+}
+
+skip_step() {
+    say "Skipped: $*"
+    skipped_steps=$((skipped_steps + 1))
+}
+
+run_step() {
+    local description="$1"
+    shift
+    say "$description"
+    if "$@"; then
+        say "Completed: $description"
+    else
+        failed_step "$description"
+    fi
+}
+
+finish_steps() {
+    if [ "$failed_steps" -ne 0 ]; then
+        die "Setup did not finish: $failed_steps step(s) failed. Some changes may already have been made. See the completed, failed, and skipped steps above before retrying."
+    fi
+    if [ "$skipped_steps" -ne 0 ]; then
+        say "Completed available steps; $skipped_steps step(s) were skipped. See the details above."
+    else
+        say "$1"
+    fi
+}
+
+available_mb() {
+    local value
+    value=$(df --output=avail -B1M / | tail -1 | tr -d ' ') || return 1
+    [[ "$value" =~ ^[0-9]{1,15}$ ]] || return 1
+    printf '%s\n' "$value"
+}
+
+flatpak_available() { command -v flatpak >/dev/null; }
+guard_available() { [ -x /usr/libexec/lnp-guard ]; }
+
 cmd_clean() {
-    local before after
-    before=$(df --output=avail -B1M / | tail -1 | tr -d ' ')
+    local before="" after="" freed
+    failed_steps=0
+    skipped_steps=0
+    before=$(available_mb) || failed_step "Measure free space before cleanup"
 
-    say "Tidying old system logs"
-    journalctl --vacuum-size=200M >/dev/null 2>&1
+    run_step "Tidy old system logs" journalctl --vacuum-size=200M
+    run_step "Clear downloaded package files" dnf clean packages -y
 
-    say "Clearing downloaded package files"
-    dnf clean packages -y >/dev/null 2>&1
-
-    if command -v flatpak >/dev/null; then
-        say "Removing unused app runtimes"
-        flatpak uninstall --unused -y >/dev/null 2>&1
+    if flatpak_available; then
+        run_step "Remove unused app runtimes" flatpak uninstall --unused -y
+    else
+        skip_step "Unused app runtimes: Flatpak is not installed"
     fi
 
-    if [ -x /usr/libexec/lnp-guard ]; then
-        say "Trimming old system snapshots"
-        /usr/libexec/lnp-guard prune 3 >/dev/null 2>&1
+    if guard_available; then
+        run_step "Trim old system snapshots" /usr/libexec/lnp-guard prune 3
+    else
+        skip_step "Old system snapshots: the snapshot helper is not installed"
     fi
 
-    after=$(df --output=avail -B1M / | tail -1 | tr -d ' ')
-    local freed=$(( after - before ))
-    [ "$freed" -lt 0 ] && freed=0
-    say "Done. Freed about ${freed} MB. Nothing personal was touched."
+    after=$(available_mb) || failed_step "Measure free space after cleanup"
+    if [ -n "$before" ] && [ -n "$after" ]; then
+        freed=$((10#$after - 10#$before))
+        [ "$freed" -ge 0 ] || freed=0
+        say "Free space increased by about ${freed} MB."
+    fi
+    finish_steps "Done. Cleanup finished. Nothing personal was touched."
+}
+
+# list-unit-files can succeed even when no unit matched. Query the actual
+# load state and distinguish absence from an inability to inspect the service.
+optional_unit() {
+    local unit="$1" description="$2" state
+    if ! state=$(systemctl show --property=LoadState --value "$unit"); then
+        failed_step "Check availability: $description"
+        return 1
+    fi
+    case "$state" in
+        loaded) return 0 ;;
+        not-found) skip_step "$description is not installed" ;;
+        *) failed_step "Check availability: $description (service state: $state)" ;;
+    esac
+    return 1
+}
+
+configure_dns() {
+    local directory=/etc/systemd/resolved.conf.d temporary
+    mkdir -p "$directory" || return 1
+    temporary=$(mktemp "$directory/.lnp-security.XXXXXX") || return 1
+    if ! printf '[Resolve]\nDNSOverTLS=opportunistic\n' > "$temporary" \
+        || ! chmod 0644 "$temporary" \
+        || ! mv -Tf -- "$temporary" "$directory/lnp-security.conf"; then
+        rm -f -- "$temporary"
+        return 1
+    fi
+    # Do not start a resolver the owner has disabled. The saved preference
+    # applies the next time it runs; this is not proof DNS is encrypted now.
+    systemctl try-restart systemd-resolved
 }
 
 cmd_secure() {
+    local enforcement
+    failed_steps=0
+    skipped_steps=0
     say "Checking the security setup"
 
-    # Better SELinux explanations: setroubleshoot analyses denials and its
-    # words are what the notification service prefers to show.
     if ! rpm -q setroubleshoot-server >/dev/null 2>&1; then
-        say "Installing the security explainer"
-        dnf install -y setroubleshoot-server >/dev/null 2>&1 \
-            || say "Could not install the security explainer; skipping."
+        run_step "Install the security explainer" dnf install -y setroubleshoot-server
+    else
+        say "Completed: The security explainer is already installed"
     fi
 
     # Report, never flip: someone who disabled enforcement did it on purpose.
-    if [ "$(getenforce 2>/dev/null)" != "Enforcing" ]; then
-        say "Note: the built-in security system (SELinux) is not fully on."
+    if enforcement=$(getenforce); then
+        if [ "$enforcement" != Enforcing ]; then
+            say "Note: the built-in security system (SELinux) is not fully on."
+        else
+            say "Completed: The built-in security system is enforcing its rules"
+        fi
+    else
+        failed_step "Check the built-in security system"
     fi
 
-    if systemctl list-unit-files firewalld.service >/dev/null 2>&1; then
-        say "Making sure the firewall is on"
-        systemctl enable --now firewalld >/dev/null 2>&1
+    if optional_unit firewalld.service "The firewall"; then
+        run_step "Turn on the firewall" systemctl enable --now firewalld
+    fi
+    if optional_unit fwupd-refresh.timer "Firmware update checks"; then
+        run_step "Turn on firmware update checks" systemctl enable --now fwupd-refresh.timer
+    fi
+    if optional_unit systemd-resolved.service "The name lookup service"; then
+        run_step "Save the encrypted lookup preference and reload the service if running" configure_dns
     fi
 
-    if systemctl list-unit-files fwupd-refresh.timer >/dev/null 2>&1; then
-        say "Turning on firmware update checks"
-        systemctl enable --now fwupd-refresh.timer >/dev/null 2>&1
-    fi
-
-    say "Encrypting name lookups where possible"
-    mkdir -p /etc/systemd/resolved.conf.d
-    printf '[Resolve]\nDNSOverTLS=opportunistic\n' \
-        > /etc/systemd/resolved.conf.d/lnp-security.conf
-    systemctl try-restart systemd-resolved >/dev/null 2>&1
-
-    # Report-only: turning off remote login behind someone's back could cut
-    # off the person who actually maintains this machine.
+    # Report-only: turning off remote login could cut off a trusted helper.
     if systemctl is-enabled sshd >/dev/null 2>&1; then
         say "Note: remote login (SSH) is enabled on this computer."
         say "If nobody uses it to reach this machine, it is safer off."
     fi
 
-    say "Done. Security checkup finished."
+    finish_steps "Done. Security checkup finished."
 }
 
-case "${1:-}" in
-    codecs) cmd_codecs ;;
-    nvidia) cmd_nvidia ;;
-    clean)  cmd_clean ;;
-    secure) cmd_secure ;;
-    *) die "usage: lnp-setup codecs|nvidia|clean|secure" ;;
-esac
+main() {
+    [ "$(id -u)" -eq 0 ] || die "This program must be run by the system, not directly."
+
+    case "${1:-}" in
+        codecs) cmd_codecs ;;
+        nvidia) cmd_nvidia ;;
+        clean)  cmd_clean ;;
+        secure) cmd_secure ;;
+        *) die "usage: lnp-setup codecs|nvidia|clean|secure" ;;
+    esac
+
+}
+
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
+    main "$@"
+fi
